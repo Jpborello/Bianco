@@ -36,12 +36,22 @@ import {
   Clock,
   ChevronRight,
   TrendingUp,
-  Loader2
+  Loader2,
+  Lock,
+  DollarSign,
+  Calendar,
+  BarChart3
 } from 'lucide-react';
 
 export default function AdminDashboard() {
-  const [tabActiva, setTabActiva] = useState<'monitoreo' | 'pedidos' | 'qrs' | 'database'>('monitoreo');
-  const [mesaTicketImprimir, setMesaTicketImprimir] = useState<DbTable | null>(null);
+  // Autenticación de Roles (null | 'caja' | 'dueno')
+  const [rolActivo, setRolActivo] = useState<'caja' | 'dueno' | null>(null);
+  const [pinInput, setPinInput] = useState('');
+  const [loginError, setLoginError] = useState('');
+  const [solicitaPin, setSolicitaPin] = useState(false);
+
+  // Navegación
+  const [tabActiva, setTabActiva] = useState<'monitoreo' | 'pedidos' | 'qrs' | 'metrics' | 'database'>('monitoreo');
   
   // Datos del Servidor
   const [mesas, setMesas] = useState<DbTable[]>([]);
@@ -55,15 +65,25 @@ export default function AdminDashboard() {
   
   // Hostname para códigos QR
   const [hostUrl, setHostUrl] = useState('');
+  const [mesaTicketImprimir, setMesaTicketImprimir] = useState<DbTable | null>(null);
 
   // Guardar última longitud de solicitudes para reproducir sonido
   const prevSolicitudesCount = useRef(0);
 
+  // Cargar rol desde sessionStorage en la carga inicial
   useEffect(() => {
     if (typeof window !== 'undefined') {
       setHostUrl(window.location.origin);
-      
-      // Aplicar color de fondo oscuro al body para que combine con el panel administrativo
+      const savedRole = sessionStorage.getItem('bianco_admin_rol');
+      if (savedRole === 'caja' || savedRole === 'dueno') {
+        setRolActivo(savedRole as any);
+      }
+    }
+  }, []);
+
+  // Ajustar temporalmente el color de fondo del body para el panel
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
       const originalBg = document.body.style.backgroundColor;
       const originalColor = document.body.style.color;
       document.body.style.backgroundColor = '#0d0d0d';
@@ -101,7 +121,6 @@ export default function AdminDashboard() {
 
       if (!solError && dbSolicitudes) {
         const countNuevas = dbSolicitudes.length;
-        // Si hay nuevas solicitudes, sonar la campana
         if (countNuevas > prevSolicitudesCount.current) {
           playChime();
         }
@@ -122,12 +141,11 @@ export default function AdminDashboard() {
       if (!AudioCtx) return;
       const ctx = new AudioCtx();
       
-      // Ping 1 (Tono alto)
       const osc1 = ctx.createOscillator();
       const gain1 = ctx.createGain();
       osc1.type = 'sine';
-      osc1.frequency.setValueAtTime(880, ctx.currentTime); // A5
-      osc1.frequency.exponentialRampToValueAtTime(1320, ctx.currentTime + 0.1); // E6
+      osc1.frequency.setValueAtTime(880, ctx.currentTime);
+      osc1.frequency.exponentialRampToValueAtTime(1320, ctx.currentTime + 0.1);
       gain1.gain.setValueAtTime(0.12, ctx.currentTime);
       gain1.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
       osc1.connect(gain1);
@@ -135,13 +153,12 @@ export default function AdminDashboard() {
       osc1.start();
       osc1.stop(ctx.currentTime + 0.4);
 
-      // Ping 2 (Con leve retraso)
       setTimeout(() => {
         const osc2 = ctx.createOscillator();
         const gain2 = ctx.createGain();
         osc2.type = 'sine';
-        osc2.frequency.setValueAtTime(1046.50, ctx.currentTime); // C6
-        osc2.frequency.exponentialRampToValueAtTime(1567.98, ctx.currentTime + 0.15); // G6
+        osc2.frequency.setValueAtTime(1046.50, ctx.currentTime);
+        osc2.frequency.exponentialRampToValueAtTime(1567.98, ctx.currentTime + 0.15);
         gain2.gain.setValueAtTime(0.12, ctx.currentTime);
         gain2.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5);
         osc2.connect(gain2);
@@ -151,45 +168,66 @@ export default function AdminDashboard() {
       }, 150);
 
     } catch (err) {
-      console.warn('AudioContext bloqueado por el navegador hasta interacción del usuario.', err);
+      console.warn('AudioContext bloqueado hasta interacción.', err);
     }
   };
 
   useEffect(() => {
-    cargarDatosCompletos();
+    if (rolActivo) {
+      cargarDatosCompletos();
 
-    // Configurar suscripción Realtime en Supabase para actualizaciones instantáneas
-    const channelPedidos = supabase
-      .channel('admin-pedidos')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'pedidos' }, () => {
-        cargarDatosCompletos();
-      })
-      .subscribe();
+      const channelPedidos = supabase
+        .channel('admin-pedidos')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'pedidos' }, () => {
+          cargarDatosCompletos();
+        })
+        .subscribe();
 
-    const channelMesas = supabase
-      .channel('admin-mesas')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'mesas' }, () => {
-        cargarDatosCompletos();
-      })
-      .subscribe();
+      const channelMesas = supabase
+        .channel('admin-mesas')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'mesas' }, () => {
+          cargarDatosCompletos();
+        })
+        .subscribe();
 
-    const channelSolicitudes = supabase
-      .channel('admin-solicitudes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'solicitudes' }, () => {
-        cargarDatosCompletos();
-      })
-      .subscribe();
+      const channelSolicitudes = supabase
+        .channel('admin-solicitudes')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'solicitudes' }, () => {
+          cargarDatosCompletos();
+        })
+        .subscribe();
 
-    // Actualización de respaldo cada 15 segundos
-    const interval = setInterval(cargarDatosCompletos, 15000);
+      const interval = setInterval(cargarDatosCompletos, 15000);
 
-    return () => {
-      supabase.removeChannel(channelPedidos);
-      supabase.removeChannel(channelMesas);
-      supabase.removeChannel(channelSolicitudes);
-      clearInterval(interval);
-    };
-  }, []);
+      return () => {
+        supabase.removeChannel(channelPedidos);
+        supabase.removeChannel(channelMesas);
+        supabase.removeChannel(channelSolicitudes);
+        clearInterval(interval);
+      };
+    }
+  }, [rolActivo]);
+
+  // Manejo de ingreso PIN de Dueño
+  const handlePinSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (pinInput === '1234') {
+      setRolActivo('dueno');
+      sessionStorage.setItem('bianco_admin_rol', 'dueno');
+      setLoginError('');
+      setPinInput('');
+    } else {
+      setLoginError('PIN Incorrecto de Administrador.');
+      setPinInput('');
+    }
+  };
+
+  // Salir de sesión del rol
+  const handleLogout = () => {
+    sessionStorage.removeItem('bianco_admin_rol');
+    setRolActivo(null);
+    setSolicitaPin(false);
+  };
 
   // Inicializar Base de Datos
   const handleSeed = async () => {
@@ -228,7 +266,6 @@ export default function AdminDashboard() {
     }
   };
 
-  // Imprimir los códigos QR de las mesas
   const handlePrint = () => {
     window.print();
   };
@@ -274,12 +311,264 @@ export default function AdminDashboard() {
 
   const totalTicket = consumosConsolidados.reduce((sum, item) => sum + item.precioUnitario * item.cantidad, 0);
 
+  // ================= CÁLCULO DE MÉTRICAS (DUEÑO) =================
+  const hoy = new Date();
+  const inicioHoy = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate());
+  
+  // Calcular Lunes de la semana en curso
+  const inicioSemana = new Date(inicioHoy);
+  const diaSemana = inicioSemana.getDay();
+  const diff = inicioSemana.getDate() - diaSemana + (diaSemana === 0 ? -6 : 1);
+  inicioSemana.setDate(diff);
+  
+  const inicioMes = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
+
+  // Totales de facturación
+  const ventasHoy = pedidos
+    .filter(p => p.estado !== 'cancelado' && new Date(p.created_at) >= inicioHoy)
+    .reduce((sum, p) => sum + Number(p.total), 0);
+
+  const ventasSemana = pedidos
+    .filter(p => p.estado !== 'cancelado' && new Date(p.created_at) >= inicioSemana)
+    .reduce((sum, p) => sum + Number(p.total), 0);
+
+  const ventasMes = pedidos
+    .filter(p => p.estado !== 'cancelado' && new Date(p.created_at) >= inicioMes)
+    .reduce((sum, p) => sum + Number(p.total), 0);
+
+  // Rotación de Productos e Infusiones
+  const productSalesMap: { [nombre: string]: { cantidad: number; total: number; esCafe: boolean } } = {};
+  
+  pedidos
+    .filter(p => p.estado !== 'cancelado')
+    .forEach(p => {
+      p.detalles?.forEach(d => {
+        const name = d.producto?.nombre || 'Producto';
+        const isCafe = d.producto?.es_cafe || false;
+        if (!productSalesMap[name]) {
+          productSalesMap[name] = { cantidad: 0, total: 0, esCafe: isCafe };
+        }
+        productSalesMap[name].cantidad += d.cantidad;
+        productSalesMap[name].total += d.cantidad * Number(d.precio_unitario);
+      });
+    });
+
+  const rankedProducts = Object.entries(productSalesMap)
+    .map(([nombre, data]) => ({ nombre, ...data }))
+    .sort((a, b) => b.cantidad - a.cantidad);
+
+  const topInfusiones = rankedProducts.filter(p => p.esCafe);
+  const topGeneral = rankedProducts;
+
+  // Días y Horas Pico de Clientes
+  const daysOfWeek = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+  const dayCounts: { [day: string]: number } = {};
+  const hourCounts: { [hourRange: string]: number } = {};
+
+  const ranges = ['08:00 - 10:00', '10:00 - 12:00', '12:00 - 14:00', '14:00 - 16:00', '16:00 - 18:00', '18:00 - 20:00', '20:00 - 22:00'];
+  ranges.forEach(r => { hourCounts[r] = 0; });
+  daysOfWeek.forEach(d => { dayCounts[d] = 0; });
+
+  pedidos
+    .filter(p => p.estado !== 'cancelado')
+    .forEach(p => {
+      const date = new Date(p.created_at);
+      const dayName = daysOfWeek[date.getDay()];
+      dayCounts[dayName] = (dayCounts[dayName] || 0) + 1;
+
+      const hour = date.getHours();
+      let range = '08:00 - 10:00';
+      if (hour >= 10 && hour < 12) range = '10:00 - 12:00';
+      else if (hour >= 12 && hour < 14) range = '12:00 - 14:00';
+      else if (hour >= 14 && hour < 16) range = '14:00 - 16:00';
+      else if (hour >= 16 && hour < 18) range = '16:00 - 18:00';
+      else if (hour >= 18 && hour < 20) range = '18:00 - 20:00';
+      else if (hour >= 20) range = '20:00 - 22:00';
+
+      hourCounts[range] = (hourCounts[range] || 0) + 1;
+    });
+
+  const topDayArray = Object.entries(dayCounts).sort((a, b) => b[1] - a[1]);
+  const topHourArray = Object.entries(hourCounts).sort((a, b) => b[1] - a[1]);
+
+  const topDay = topDayArray[0]?.[1] > 0 ? topDayArray[0] : ['Sin datos', 0];
+  const topHour = topHourArray[0]?.[1] > 0 ? topHourArray[0] : ['Sin datos', 0];
+
+  // ================= PANTALLA LOGIN DE ACCESO =================
+  if (!rolActivo) {
+    return (
+      <div style={{
+        display: 'flex',
+        flexDirection: 'column',
+        minHeight: '100vh',
+        background: '#0d0d0d',
+        color: '#f5f5f5',
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: '24px',
+        fontFamily: 'var(--font-sans)'
+      }}>
+        <div style={{
+          background: '#161616',
+          border: '1px solid #222',
+          borderRadius: '0px', // Bordes completamente rectos
+          width: '100%',
+          maxWidth: '420px',
+          padding: '36px', // Padding generoso premium
+          boxShadow: '0 4px 30px rgba(0, 0, 0, 0.5)',
+          textAlign: 'center'
+        }}>
+          <span style={{
+            fontSize: '11px',
+            color: 'var(--accent-gold)',
+            textTransform: 'uppercase',
+            letterSpacing: '3px',
+            fontWeight: 600,
+            display: 'block',
+            marginBottom: '8px'
+          }}>BIANCO PASTELERÍA</span>
+          
+          <h2 style={{ fontSize: '24px', fontWeight: 400, letterSpacing: '0.5px', marginBottom: '28px', textTransform: 'uppercase' }}>
+            Control de Acceso
+          </h2>
+
+          {!solicitaPin ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <button
+                onClick={() => {
+                  setRolActivo('caja');
+                  sessionStorage.setItem('bianco_admin_rol', 'caja');
+                }}
+                style={{
+                  background: '#222',
+                  border: '1px solid #333',
+                  color: 'white',
+                  padding: '16px',
+                  borderRadius: '0px',
+                  fontSize: '14px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  letterSpacing: '1px',
+                  textTransform: 'uppercase',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px'
+                }}
+              >
+                <ShoppingBag size={16} />
+                <span>Ingresar como Caja / Personal</span>
+              </button>
+
+              <button
+                onClick={() => setSolicitaPin(true)}
+                style={{
+                  background: 'var(--accent-gold)',
+                  border: 'none',
+                  color: '#121212',
+                  padding: '16px',
+                  borderRadius: '0px',
+                  fontSize: '14px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  letterSpacing: '1px',
+                  textTransform: 'uppercase',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px'
+                }}
+              >
+                <Lock size={16} />
+                <span>Acceso Dueño / Admin</span>
+              </button>
+            </div>
+          ) : (
+            <form onSubmit={handlePinSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '20px', textAlign: 'left' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <label style={{ fontSize: '12px', fontWeight: 600, letterSpacing: '1px', textTransform: 'uppercase', color: '#a0a0a0' }}>
+                  Código PIN de Administrador
+                </label>
+                <input 
+                  type="password"
+                  required
+                  value={pinInput}
+                  onChange={(e) => setPinInput(e.target.value)}
+                  placeholder="••••"
+                  maxLength={4}
+                  style={{
+                    width: '100%',
+                    padding: '14px',
+                    borderRadius: '0px',
+                    border: '1px solid #333',
+                    background: '#0d0d0d',
+                    color: 'white',
+                    fontSize: '18px',
+                    textAlign: 'center',
+                    letterSpacing: '8px'
+                  }}
+                  autoFocus
+                />
+              </div>
+
+              {loginError && (
+                <p style={{ color: '#ff4d4d', fontSize: '12px', textAlign: 'center', margin: '4px 0 0' }}>{loginError}</p>
+              )}
+
+              <div style={{ display: 'flex', gap: '10px', marginTop: '12px' }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSolicitaPin(false);
+                    setLoginError('');
+                  }}
+                  style={{
+                    flex: 1,
+                    background: '#222',
+                    border: '1px solid #333',
+                    color: 'white',
+                    padding: '14px',
+                    borderRadius: '0px',
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    textTransform: 'uppercase'
+                  }}
+                >
+                  Volver
+                </button>
+                <button
+                  type="submit"
+                  style={{
+                    flex: 2,
+                    background: 'var(--accent-gold)',
+                    border: 'none',
+                    color: '#121212',
+                    padding: '14px',
+                    borderRadius: '0px',
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    textTransform: 'uppercase'
+                  }}
+                >
+                  Confirmar PIN
+                </button>
+              </div>
+            </form>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // ================= PANTALLA PRINCIPAL ADMIN =================
   return (
     <div style={{
       display: 'flex',
       flexDirection: 'column',
       minHeight: '100vh',
-      background: '#0d0d0d', // Fondo oscuro premium para el panel de administración
+      background: '#0d0d0d',
       color: '#f5f5f5',
       fontFamily: 'var(--font-sans)',
       paddingBottom: '40px'
@@ -288,7 +577,7 @@ export default function AdminDashboard() {
       {/* HEADER DE ADMINISTRACIÓN */}
       <header style={{
         background: '#161616',
-        borderBottom: '1px solid #262626',
+        borderBottom: '1px solid #222',
         padding: '16px 32px',
         display: 'flex',
         justifyContent: 'space-between',
@@ -302,38 +591,41 @@ export default function AdminDashboard() {
             background: 'var(--accent-gold)',
             color: '#121212',
             padding: '10px 14px',
-            borderRadius: '10px',
+            borderRadius: '0px', // Bordes rectos
             fontWeight: 'bold',
-            fontSize: '18px',
+            fontSize: '16px',
             display: 'flex',
             alignItems: 'center',
-            gap: '8px'
+            gap: '8px',
+            letterSpacing: '1px'
           }}>
-            <Sparkles size={18} />
+            <Sparkles size={16} />
             <span>BIANCO</span>
           </div>
           <div>
-            <h1 style={{ fontSize: '18px', fontWeight: 600, letterSpacing: '0.5px' }}>Panel de Control y Monitoreo</h1>
+            <h1 style={{ fontSize: '17px', fontWeight: 500, letterSpacing: '0.5px', textTransform: 'uppercase' }}>
+              Control y Monitoreo {rolActivo === 'dueno' ? '(Dueño)' : '(Caja)'}
+            </h1>
             <p style={{ fontSize: '11px', color: '#a0a0a0' }}>Actualizaciones en tiempo real activas</p>
           </div>
         </div>
 
-        {/* CONTADORES RÁPIDOS */}
-        <div style={{ display: 'flex', gap: '20px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#222', padding: '6px 14px', borderRadius: '8px' }}>
-            <Bell size={16} style={{ color: 'var(--accent-gold)' }} />
-            <span style={{ fontSize: '13px' }}>Llamados: <b>{solicitudes.filter(s => s.tipo === 'llamar_mozo').length}</b></span>
+        {/* CONTADORES RÁPIDOS Y LOGOUT */}
+        <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#222', padding: '6px 14px', borderRadius: '0px', border: '1px solid #333' }}>
+            <Bell size={14} style={{ color: 'var(--accent-gold)' }} />
+            <span style={{ fontSize: '12px' }}>Llamados: <b>{solicitudes.filter(s => s.tipo === 'llamar_mozo').length}</b></span>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#222', padding: '6px 14px', borderRadius: '8px' }}>
-            <Receipt size={16} style={{ color: '#2b9348' }} />
-            <span style={{ fontSize: '13px' }}>Cuentas: <b>{solicitudes.filter(s => s.tipo === 'pedir_cuenta').length}</b></span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#222', padding: '6px 14px', borderRadius: '0px', border: '1px solid #333' }}>
+            <Receipt size={14} style={{ color: '#2b9348' }} />
+            <span style={{ fontSize: '12px' }}>Cuentas: <b>{solicitudes.filter(s => s.tipo === 'pedir_cuenta').length}</b></span>
           </div>
           <button 
             onClick={cargarDatosCompletos} 
             style={{
               background: '#262626',
-              border: 'none',
-              borderRadius: '8px',
+              border: '1px solid #333',
+              borderRadius: '0px',
               padding: '8px 12px',
               cursor: 'pointer',
               color: '#f5f5f5',
@@ -342,7 +634,24 @@ export default function AdminDashboard() {
               justifyContent: 'center'
             }}
           >
-            <RefreshCw size={16} />
+            <RefreshCw size={14} />
+          </button>
+          
+          <button 
+            onClick={handleLogout}
+            style={{
+              background: 'transparent',
+              border: '1px solid #ff4d4d',
+              color: '#ff4d4d',
+              borderRadius: '0px',
+              padding: '8px 14px',
+              fontSize: '12px',
+              fontWeight: 600,
+              cursor: 'pointer',
+              textTransform: 'uppercase'
+            }}
+          >
+            Cerrar Sesión
           </button>
         </div>
       </header>
@@ -356,11 +665,12 @@ export default function AdminDashboard() {
         gap: '24px'
       }} className="no-print">
         {[
-          { id: 'monitoreo', label: 'Monitoreo de Mesas', icon: Coffee },
-          { id: 'pedidos', label: 'Pedidos y Delivery', icon: ShoppingBag },
-          { id: 'qrs', label: 'Generador de Códigos QR', icon: QrCode },
-          { id: 'database', label: 'Base de Datos', icon: Database }
-        ].map(tab => {
+          { id: 'monitoreo', label: 'Monitoreo de Mesas', icon: Coffee, visible: true },
+          { id: 'pedidos', label: 'Pedidos y Delivery', icon: ShoppingBag, visible: true },
+          { id: 'qrs', label: 'Códigos QR', icon: QrCode, visible: true },
+          { id: 'metrics', label: 'Métricas de Venta', icon: BarChart3, visible: rolActivo === 'dueno' },
+          { id: 'database', label: 'Base de Datos', icon: Database, visible: true }
+        ].filter(t => t.visible).map(tab => {
           const Icon = tab.icon;
           const activo = tabActiva === tab.id;
           return (
@@ -374,15 +684,17 @@ export default function AdminDashboard() {
                 padding: '16px 8px',
                 color: activo ? 'var(--accent-gold)' : '#a0a0a0',
                 fontWeight: activo ? 600 : 500,
-                fontSize: '14px',
+                fontSize: '13px',
                 cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
                 gap: '8px',
-                borderRadius: 0
+                borderRadius: 0,
+                textTransform: 'uppercase',
+                letterSpacing: '0.5px'
               }}
             >
-              <Icon size={16} />
+              <Icon size={14} />
               <span>{tab.label}</span>
             </button>
           );
@@ -398,14 +710,14 @@ export default function AdminDashboard() {
             background: 'var(--accent-light-gold)',
             color: '#121212',
             padding: '16px 24px',
-            borderRadius: '12px',
+            borderRadius: '0px', // Sin redondeados
+            border: '1px solid var(--accent-gold)',
             marginBottom: '24px',
             fontWeight: 500,
-            fontSize: '14px',
+            fontSize: '13px',
             display: 'flex',
             alignItems: 'center',
-            gap: '12px',
-            boxShadow: '0 4px 20px rgba(197, 168, 128, 0.2)'
+            gap: '12px'
           }}>
             {seeding ? <Loader2 className="animate-spin" size={18} /> : <CheckCircle size={18} />}
             <span>{seedingMsg}</span>
@@ -416,8 +728,8 @@ export default function AdminDashboard() {
         {tabActiva === 'monitoreo' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h2 style={{ fontSize: '20px', fontWeight: 500 }}>Mesas Activas (1 a 10)</h2>
-              <p style={{ fontSize: '13px', color: '#a0a0a0' }}>Haz clic en Liberar para desocupar la mesa y cerrar sus llamados.</p>
+              <h2 style={{ fontSize: '18px', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Mesas Activas (1 a 10)</h2>
+              <p style={{ fontSize: '12px', color: '#a0a0a0' }}>Haz clic en Liberar para desocupar la mesa y cerrar su sesión.</p>
             </div>
 
             <div style={{
@@ -426,14 +738,13 @@ export default function AdminDashboard() {
               gap: '24px'
             }}>
               {mesas.length === 0 ? (
-                <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: '60px', border: '1px dashed #333', borderRadius: '16px', color: '#a0a0a0' }}>
+                <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: '60px', border: '1px dashed #333', borderRadius: '0px', color: '#a0a0a0' }}>
                   <Database size={32} style={{ marginBottom: '12px', color: '#555' }} />
                   <p>No se encontraron mesas cargadas en la base de datos.</p>
                   <p style={{ fontSize: '13px', marginTop: '6px' }}>Ve a la pestaña "Base de Datos" para inicializarlas.</p>
                 </div>
               ) : (
                 mesas.map((mesa) => {
-                  // Buscar si hay solicitudes pendientes para esta mesa
                   const llamadosMesa = solicitudes.filter(s => s.mesa_id === mesa.id && s.tipo === 'llamar_mozo');
                   const cuentasMesa = solicitudes.filter(s => s.mesa_id === mesa.id && s.tipo === 'pedir_cuenta');
                   
@@ -449,15 +760,14 @@ export default function AdminDashboard() {
                   const tieneLlamado = llamadosMesa.length > 0;
                   const tieneCuenta = cuentasMesa.length > 0;
 
-                  // Definir borde y estilo según llamados
-                  let borderStyle = '1px solid #262626';
+                  let borderStyle = '1px solid #222';
                   let bgGlow = 'transparent';
                   if (tieneCuenta) {
-                    borderStyle = '2px solid #2b9348'; // Verde para cuenta
-                    bgGlow = 'rgba(43, 147, 72, 0.05)';
+                    borderStyle = '2px solid #2b9348';
+                    bgGlow = 'rgba(43, 147, 72, 0.04)';
                   } else if (tieneLlamado) {
-                    borderStyle = '2px solid var(--accent-gold)'; // Dorado para mozo
-                    bgGlow = 'rgba(197, 168, 128, 0.05)';
+                    borderStyle = '2px solid var(--accent-gold)';
+                    bgGlow = 'rgba(197, 168, 128, 0.04)';
                   }
 
                   return (
@@ -465,10 +775,10 @@ export default function AdminDashboard() {
                       key={mesa.id}
                       style={{
                         background: '#161616',
-                        borderRadius: '16px',
+                        borderRadius: '0px', // Sin esquinas redondeadas
                         border: borderStyle,
                         backgroundColor: bgGlow || '#161616',
-                        padding: '20px',
+                        padding: '24px', // Padding amplio
                         boxShadow: '0 4px 20px rgba(0, 0, 0, 0.2)',
                         display: 'flex',
                         flexDirection: 'column',
@@ -477,17 +787,16 @@ export default function AdminDashboard() {
                       }}
                     >
                       <div>
-                        {/* Header de tarjeta */}
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
                           <span style={{ fontSize: '18px', fontWeight: 600 }}>Mesa {mesa.numero}</span>
                           
-                          {/* Estado de la mesa */}
                           <span style={{
-                            fontSize: '11px',
+                            fontSize: '10px',
                             textTransform: 'uppercase',
                             fontWeight: 'bold',
                             padding: '4px 8px',
-                            borderRadius: '12px',
+                            borderRadius: '0px',
+                            border: '1px solid transparent',
                             background: 
                               mesa.estado === 'libre' ? '#222' :
                               mesa.estado === 'esperando_pedido' ? '#b58826' :
@@ -502,21 +811,21 @@ export default function AdminDashboard() {
                           </span>
                         </div>
 
-                        {/* Indicadores de llamadas */}
                         {tieneLlamado && (
                           <div style={{
-                            background: 'rgba(197, 168, 128, 0.2)',
+                            background: 'rgba(197, 168, 128, 0.15)',
+                            border: '1px solid var(--accent-gold)',
                             color: 'var(--accent-gold)',
-                            borderRadius: '8px',
-                            padding: '10px',
+                            borderRadius: '0px',
+                            padding: '10px 14px',
                             display: 'flex',
                             justifyContent: 'space-between',
                             alignItems: 'center',
-                            marginBottom: '12px',
+                            marginBottom: '14px',
                             animation: 'pulse 2s infinite'
                           }}>
-                            <span style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 600 }}>
-                              <Bell size={14} className="animate-bounce" /> LLAMAN AL MOZO
+                            <span style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', fontWeight: 600, letterSpacing: '0.5px' }}>
+                              <Bell size={12} className="animate-bounce" /> LLAMAN AL MOZO
                             </span>
                             <button 
                               onClick={() => handleAtenderSolicitud(llamadosMesa[0].id)}
@@ -525,10 +834,11 @@ export default function AdminDashboard() {
                                 border: 'none',
                                 color: '#121212',
                                 padding: '4px 8px',
-                                borderRadius: '4px',
-                                fontSize: '11px',
+                                borderRadius: '0px',
+                                fontSize: '10px',
                                 fontWeight: 'bold',
-                                cursor: 'pointer'
+                                cursor: 'pointer',
+                                textTransform: 'uppercase'
                               }}
                             >
                               Atender
@@ -538,18 +848,19 @@ export default function AdminDashboard() {
 
                         {tieneCuenta && (
                           <div style={{
-                            background: 'rgba(43, 147, 72, 0.2)',
+                            background: 'rgba(43, 147, 72, 0.15)',
+                            border: '1px solid #2b9348',
                             color: '#2b9348',
-                            borderRadius: '8px',
-                            padding: '10px',
+                            borderRadius: '0px',
+                            padding: '10px 14px',
                             display: 'flex',
                             justifyContent: 'space-between',
                             alignItems: 'center',
-                            marginBottom: '12px',
+                            marginBottom: '14px',
                             animation: 'pulse 2s infinite'
                           }}>
-                            <span style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 600 }}>
-                              <Receipt size={14} /> PIDEN LA CUENTA
+                            <span style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', fontWeight: 600, letterSpacing: '0.5px' }}>
+                              <Receipt size={12} /> PIDEN LA CUENTA
                             </span>
                             <button 
                               onClick={() => handleAtenderSolicitud(cuentasMesa[0].id)}
@@ -558,10 +869,11 @@ export default function AdminDashboard() {
                                 border: 'none',
                                 color: 'white',
                                 padding: '4px 8px',
-                                borderRadius: '4px',
-                                fontSize: '11px',
+                                borderRadius: '0px',
+                                fontSize: '10px',
                                 fontWeight: 'bold',
-                                cursor: 'pointer'
+                                cursor: 'pointer',
+                                textTransform: 'uppercase'
                               }}
                             >
                               Atender
@@ -571,7 +883,7 @@ export default function AdminDashboard() {
 
                         {/* Pedidos activos de la mesa */}
                         {(pedidosMesa.length > 0 || mesa.cliente_nombre) && (
-                          <div style={{ borderTop: '1px solid #262626', paddingTop: '10px', marginTop: '10px' }}>
+                          <div style={{ borderTop: '1px solid #222', paddingTop: '12px', marginTop: '12px' }}>
                             <p style={{ fontSize: '11px', color: '#a0a0a0', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                               Consumos Activos ({mesa.cliente_nombre || 'Mesa'}):
                             </p>
@@ -587,7 +899,7 @@ export default function AdminDashboard() {
                                 ))
                               )}
                               {pedidosMesa.length > 0 && (
-                                <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px dashed #333', paddingTop: '6px', marginTop: '6px', fontSize: '13px', fontWeight: 600 }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px dashed #333', paddingTop: '8px', marginTop: '8px', fontSize: '13px', fontWeight: 600 }}>
                                   <span>Total Consumido:</span>
                                   <span style={{ color: 'var(--accent-gold)' }}>
                                     ${pedidosMesa.reduce((sum, p) => sum + Number(p.total), 0).toLocaleString('es-AR')}
@@ -599,8 +911,8 @@ export default function AdminDashboard() {
                         )}
                       </div>
 
-                      {/* Botón de control de mesa */}
-                      <div style={{ display: 'flex', gap: '8px', marginTop: '16px' }}>
+                      {/* Botones de control de mesa */}
+                      <div style={{ display: 'flex', gap: '8px', marginTop: '20px' }}>
                         {mesa.estado !== 'libre' && (
                           <>
                             <button
@@ -611,16 +923,17 @@ export default function AdminDashboard() {
                                 background: 'var(--accent-gold)',
                                 border: 'none',
                                 color: '#121212',
-                                borderRadius: '8px',
+                                borderRadius: '0px',
                                 padding: '8px',
-                                fontSize: '12px',
+                                fontSize: '11px',
                                 fontWeight: 600,
                                 cursor: 'pointer',
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
                                 gap: '4px',
-                                opacity: pedidosMesa.length === 0 ? 0.5 : 1
+                                opacity: pedidosMesa.length === 0 ? 0.5 : 1,
+                                textTransform: 'uppercase'
                               }}
                             >
                               <Printer size={12} />
@@ -637,15 +950,16 @@ export default function AdminDashboard() {
                                 background: '#222',
                                 border: '1px solid #333',
                                 color: '#ff4d4d',
-                                borderRadius: '8px',
+                                borderRadius: '0px',
                                 padding: '8px',
-                                fontSize: '12px',
+                                fontSize: '11px',
                                 fontWeight: 600,
                                 cursor: 'pointer',
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
-                                gap: '4px'
+                                gap: '4px',
+                                textTransform: 'uppercase'
                               }}
                             >
                               <Trash2 size={12} />
@@ -666,15 +980,15 @@ export default function AdminDashboard() {
         {tabActiva === 'pedidos' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h2 style={{ fontSize: '20px', fontWeight: 500 }}>Cola de Pedidos Activos (Cocina & Delivery)</h2>
-              <span style={{ background: 'var(--accent-gold)', color: '#121212', fontSize: '12px', fontWeight: 600, padding: '4px 8px', borderRadius: '12px' }}>
+              <h2 style={{ fontSize: '18px', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Cola de Pedidos Activos (Cocina & Delivery)</h2>
+              <span style={{ background: 'var(--accent-gold)', color: '#121212', fontSize: '11px', fontWeight: 600, padding: '4px 8px', borderRadius: '0px', textTransform: 'uppercase' }}>
                 {pedidosActivos.length} pedidos en cola
               </span>
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               {pedidosActivos.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '60px', border: '1px dashed #333', borderRadius: '16px', color: '#a0a0a0' }}>
+                <div style={{ textAlign: 'center', padding: '60px', border: '1px dashed #333', borderRadius: '0px', color: '#a0a0a0' }}>
                   <ShoppingBag size={32} style={{ marginBottom: '12px', color: '#555' }} />
                   <p>No hay pedidos pendientes en preparación.</p>
                 </div>
@@ -684,9 +998,9 @@ export default function AdminDashboard() {
                     key={pedido.id}
                     style={{
                       background: '#161616',
-                      borderRadius: '12px',
-                      border: '1px solid #262626',
-                      padding: '20px',
+                      borderRadius: '0px',
+                      border: '1px solid #222',
+                      padding: '24px', // Espaciado amplio
                       display: 'flex',
                       flexWrap: 'wrap',
                       justifyContent: 'space-between',
@@ -694,34 +1008,34 @@ export default function AdminDashboard() {
                       gap: '20px'
                     }}
                   >
-                    {/* Información del pedido */}
                     <div style={{ flex: 1, minWidth: '250px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
                         <span style={{
-                          fontSize: '11px',
+                          fontSize: '10px',
                           fontWeight: 'bold',
                           padding: '4px 8px',
-                          borderRadius: '4px',
-                          background: pedido.tipo === 'delivery' ? 'rgba(59, 130, 246, 0.2)' : 'rgba(245, 158, 11, 0.2)',
+                          borderRadius: '0px',
+                          background: pedido.tipo === 'delivery' ? 'rgba(59, 130, 246, 0.15)' : 'rgba(245, 158, 11, 0.15)',
                           color: pedido.tipo === 'delivery' ? '#3b82f6' : '#f59e0b',
                           display: 'flex',
                           alignItems: 'center',
-                          gap: '4px'
+                          gap: '4px',
+                          letterSpacing: '0.5px'
                         }}>
                           {pedido.tipo === 'delivery' ? <Truck size={12} /> : <Coffee size={12} />}
                           {pedido.tipo === 'delivery' ? 'DELIVERY' : `MESA ${pedido.mesa?.numero}`}
                         </span>
 
-                        <span style={{ fontSize: '13px', color: '#a0a0a0' }}>
+                        <span style={{ fontSize: '12px', color: '#a0a0a0' }}>
                           Pedido #{pedido.id} • {new Date(pedido.created_at).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}
                         </span>
                       </div>
 
-                      <h4 style={{ fontSize: '16px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                        <User size={14} style={{ color: 'var(--accent-gold)' }} /> {pedido.nombre_cliente}
+                      <h4 style={{ fontSize: '15px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+                        <User size={13} style={{ color: 'var(--accent-gold)' }} /> {pedido.nombre_cliente}
                       </h4>
 
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '13px', color: '#a0a0a0', marginBottom: '12px' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '13px', color: '#a0a0a0', marginBottom: '14px' }}>
                         <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                           <Phone size={12} /> Celular: {pedido.telefono}
                         </span>
@@ -732,12 +1046,11 @@ export default function AdminDashboard() {
                         )}
                       </div>
 
-                      {/* Detalles del pedido */}
-                      <div style={{ background: '#1c1c1c', borderRadius: '8px', padding: '12px' }}>
-                        <p style={{ fontSize: '11px', color: '#666', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px' }}>Productos:</p>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      <div style={{ background: '#0d0d0d', border: '1px solid #222', borderRadius: '0px', padding: '16px' }}>
+                        <p style={{ fontSize: '10px', color: '#666', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px', fontWeight: 600 }}>Productos:</p>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                           {pedido.detalles?.map((det, index) => (
-                            <div key={index} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
+                            <div key={index} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
                               <span>
                                 <b>{det.cantidad}x</b> {det.producto?.nombre || 'Producto'}
                                 {det.observaciones && (
@@ -753,17 +1066,13 @@ export default function AdminDashboard() {
                       </div>
                     </div>
 
-                    {/* Costo total y estado */}
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', justifyContent: 'space-between', height: '100%', minWidth: '150px', alignSelf: 'stretch' }}>
-                      <div style={{ textAlign: 'right', marginBottom: '16px' }}>
-                        <span style={{ fontSize: '12px', color: '#a0a0a0', display: 'block' }}>Total del Pedido</span>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', justifyContent: 'space-between', height: '100%', minWidth: '160px', alignSelf: 'stretch' }}>
+                      <div style={{ textAlign: 'right', marginBottom: '20px' }}>
+                        <span style={{ fontSize: '11px', color: '#a0a0a0', display: 'block', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Total del Pedido</span>
                         <span style={{ fontSize: '20px', fontWeight: 700, color: 'var(--accent-gold)' }}>${Number(pedido.total).toLocaleString('es-AR')}</span>
                       </div>
 
-                      {/* Botones de control de estado del pedido */}
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', width: '100%' }}>
-                        <div style={{ fontSize: '11px', color: '#666', textTransform: 'uppercase', marginBottom: '2px', textAlign: 'right' }}>Cambiar Estado:</div>
-                        
                         <div style={{ display: 'flex', gap: '6px' }}>
                           {pedido.estado === 'pendiente' && (
                             <button 
@@ -773,11 +1082,12 @@ export default function AdminDashboard() {
                                 background: '#b58826',
                                 color: 'white',
                                 border: 'none',
-                                padding: '8px 12px',
-                                borderRadius: '6px',
-                                fontSize: '12px',
+                                padding: '10px 14px',
+                                borderRadius: '0px',
+                                fontSize: '11px',
                                 fontWeight: 600,
-                                cursor: 'pointer'
+                                cursor: 'pointer',
+                                textTransform: 'uppercase'
                               }}
                             >
                               Preparar
@@ -791,11 +1101,12 @@ export default function AdminDashboard() {
                                 background: '#1c4721',
                                 color: 'white',
                                 border: 'none',
-                                padding: '8px 12px',
-                                borderRadius: '6px',
-                                fontSize: '12px',
+                                padding: '10px 14px',
+                                borderRadius: '0px',
+                                fontSize: '11px',
                                 fontWeight: 600,
-                                cursor: 'pointer'
+                                cursor: 'pointer',
+                                textTransform: 'uppercase'
                               }}
                             >
                               Listo
@@ -809,11 +1120,12 @@ export default function AdminDashboard() {
                                 background: '#2b9348',
                                 color: 'white',
                                 border: 'none',
-                                padding: '8px 12px',
-                                borderRadius: '6px',
-                                fontSize: '12px',
+                                padding: '10px 14px',
+                                borderRadius: '0px',
+                                fontSize: '11px',
                                 fontWeight: 600,
-                                cursor: 'pointer'
+                                cursor: 'pointer',
+                                textTransform: 'uppercase'
                               }}
                             >
                               Entregar
@@ -830,10 +1142,11 @@ export default function AdminDashboard() {
                               background: '#222',
                               border: '1px solid #333',
                               color: '#ff4d4d',
-                              padding: '8px 12px',
-                              borderRadius: '6px',
-                              fontSize: '12px',
-                              cursor: 'pointer'
+                              padding: '10px',
+                              borderRadius: '0px',
+                              fontSize: '11px',
+                              cursor: 'pointer',
+                              textTransform: 'uppercase'
                             }}
                             title="Cancelar Pedido"
                           >
@@ -847,10 +1160,10 @@ export default function AdminDashboard() {
               )}
             </div>
 
-            {/* HISTÓRICO DE PEDIDOS */}
+            {/* HISTORIAL DE PEDIDOS */}
             {pedidosCompletados.length > 0 && (
               <div style={{ marginTop: '40px', borderTop: '1px solid #222', paddingTop: '24px' }}>
-                <h3 style={{ fontSize: '16px', color: '#888', marginBottom: '16px' }}>Historial Reciente (Entregados y Cancelados)</h3>
+                <h3 style={{ fontSize: '14px', color: '#888', marginBottom: '16px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Historial Reciente (Entregados y Cancelados)</h3>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                   {pedidosCompletados.slice(0, 10).map((pedido) => (
                     <div 
@@ -858,7 +1171,7 @@ export default function AdminDashboard() {
                       style={{
                         background: '#121212',
                         border: '1px solid #1a1a1a',
-                        borderRadius: '8px',
+                        borderRadius: '0px',
                         padding: '12px 20px',
                         display: 'flex',
                         justifyContent: 'space-between',
@@ -871,11 +1184,12 @@ export default function AdminDashboard() {
                           fontSize: '10px',
                           fontWeight: 'bold',
                           padding: '2px 6px',
-                          borderRadius: '4px',
+                          borderRadius: '0px',
                           background: pedido.estado === 'entregado' ? 'rgba(43, 147, 72, 0.1)' : 'rgba(255, 77, 77, 0.1)',
-                          color: pedido.estado === 'entregado' ? '#2b9348' : '#ff4d4d'
+                          color: pedido.estado === 'entregado' ? '#2b9348' : '#ff4d4d',
+                          textTransform: 'uppercase'
                         }}>
-                          {pedido.estado.toUpperCase()}
+                          {pedido.estado}
                         </span>
                         <span>#{pedido.id} • {pedido.nombre_cliente} ({pedido.tipo})</span>
                       </div>
@@ -895,8 +1209,8 @@ export default function AdminDashboard() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }} className="no-print">
               <div>
-                <h2 style={{ fontSize: '20px', fontWeight: 500 }}>Cartelera de Códigos QR para las Mesas</h2>
-                <p style={{ fontSize: '13px', color: '#a0a0a0', marginTop: '4px' }}>
+                <h2 style={{ fontSize: '18px', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Tarjetas de Códigos QR para las Mesas</h2>
+                <p style={{ fontSize: '12px', color: '#a0a0a0', marginTop: '4px' }}>
                   Hojas listas para imprimir. Cada una contiene el código QR enlazado a la dirección `/mesa/[id]`.
                 </p>
               </div>
@@ -906,22 +1220,23 @@ export default function AdminDashboard() {
                   background: 'var(--accent-gold)',
                   color: '#121212',
                   border: 'none',
-                  borderRadius: '8px',
-                  padding: '12px 20px',
-                  fontSize: '14px',
+                  borderRadius: '0px',
+                  padding: '12px 24px',
+                  fontSize: '13px',
                   fontWeight: 600,
                   cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '8px'
+                  gap: '8px',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.5px'
                 }}
               >
-                <Printer size={16} />
+                <Printer size={14} />
                 <span>Imprimir Tarjetas QR</span>
               </button>
             </div>
 
-            {/* VISTA IMPRIMIBLE DE QRS */}
             <div style={{
               display: 'grid',
               gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
@@ -930,10 +1245,7 @@ export default function AdminDashboard() {
             }} className="print-area">
               {[...Array(10)].map((_, i) => {
                 const numero = i + 1;
-                // Generar URL hacia la mesa correspondiente
                 const targetUrl = `${hostUrl}/mesa/${numero}`;
-                
-                // Usamos la API pública de qrserver para renderizar los QRs sin necesidad de paquetes pesados en frontend
                 const qrImgSrc = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(targetUrl)}&color=121212`;
 
                 return (
@@ -943,50 +1255,49 @@ export default function AdminDashboard() {
                     style={{
                       background: 'white',
                       color: '#121212',
-                      borderRadius: '16px',
+                      borderRadius: '0px', // Sin redondeados
                       border: '2px solid #eae6df',
-                      padding: '24px',
+                      padding: '32px 24px', // Espaciado amplio
                       textAlign: 'center',
                       display: 'flex',
                       flexDirection: 'column',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      boxShadow: '0 4px 10px rgba(0,0,0,0.05)',
+                      boxShadow: '0 4px 10px rgba(0,0,0,0.03)',
                       pageBreakInside: 'avoid'
                     }}
                   >
                     <span style={{ fontSize: '11px', fontWeight: 600, letterSpacing: '2px', textTransform: 'uppercase', color: '#c5a880', margin: 0 }}>BIANCO</span>
-                    <p style={{ fontSize: '9px', textTransform: 'uppercase', letterSpacing: '1px', color: '#656565', marginTop: '-2px', marginBottom: '12px' }}>Pastelería de Autor</p>
+                    <p style={{ fontSize: '8px', textTransform: 'uppercase', letterSpacing: '1px', color: '#656565', marginTop: '-2px', marginBottom: '16px' }}>Pastelería de Autor</p>
                     
                     <div style={{
-                      width: '60px',
-                      height: '60px',
-                      borderRadius: '50%',
+                      width: '56px',
+                      height: '56px',
+                      borderRadius: '0px', // Bordes rectos para un look industrial
                       background: '#121212',
                       color: 'white',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      fontSize: '24px',
+                      fontSize: '22px',
                       fontWeight: 'bold',
-                      marginBottom: '16px',
-                      border: '3px solid #c5a880'
+                      marginBottom: '20px',
+                      border: '2px solid #c5a880'
                     }}>
                       {numero}
                     </div>
 
-                    {/* QR Code Container */}
                     <div style={{
                       width: '180px',
                       height: '180px',
                       position: 'relative',
-                      marginBottom: '16px',
+                      marginBottom: '20px',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
                       border: '1px solid #eae6df',
-                      padding: '10px',
-                      borderRadius: '8px',
+                      padding: '8px',
+                      borderRadius: '0px',
                       background: '#fff'
                     }}>
                       {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -997,9 +1308,9 @@ export default function AdminDashboard() {
                       />
                     </div>
 
-                    <h4 style={{ fontSize: '13px', fontWeight: 600, color: '#121212', marginBottom: '4px' }}>Escaneá el QR</h4>
-                    <p style={{ fontSize: '10px', color: '#656565', lineHeight: 1.3, maxWidth: '200px', margin: '0 auto' }}>
-                      Mirá la carta, hacé tu pedido, agregá agua/café o llamá al mozo desde tu celular.
+                    <h4 style={{ fontSize: '12px', fontWeight: 600, color: '#121212', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Escaneá el QR</h4>
+                    <p style={{ fontSize: '9px', color: '#656565', lineHeight: 1.3, maxWidth: '200px', margin: '0 auto' }}>
+                      Mirá la carta, realizá tu pedido, agregá agua o llamá al mozo desde tu celular.
                     </p>
                   </div>
                 );
@@ -1008,20 +1319,188 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* 4. BASE DE DATOS E INICIALIZACIÓN */}
+        {/* 4. METRICAS DE VENTA (SÓLO DUEÑO) */}
+        {tabActiva === 'metrics' && rolActivo === 'dueno' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h2 style={{ fontSize: '18px', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Métricas y Analíticas del Local</h2>
+              <span style={{ fontSize: '11px', color: '#a0a0a0', border: '1px solid #222', padding: '4px 10px', borderRadius: '0px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                Vista Administrador
+              </span>
+            </div>
+
+            {/* METRICAS DE FACTURACIÓN */}
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+              gap: '24px'
+            }}>
+              {[
+                { titulo: 'Facturación del Día', valor: ventasHoy, desc: 'Pedidos de hoy acumulados sin cancelar', icon: DollarSign },
+                { titulo: 'Facturación Semanal', valor: ventasSemana, desc: 'Desde el lunes de la semana en curso', icon: Calendar },
+                { titulo: 'Facturación Mensual', valor: ventasMes, desc: 'Desde el primer día del mes actual', icon: TrendingUp }
+              ].map((item, idx) => {
+                const Icon = item.icon;
+                return (
+                  <div key={idx} style={{
+                    background: '#161616',
+                    border: '1px solid #222',
+                    borderRadius: '0px',
+                    padding: '28px 24px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'space-between',
+                    boxShadow: 'var(--shadow-soft)'
+                  }}>
+                    <div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                        <span style={{ fontSize: '11px', fontWeight: 600, color: '#a0a0a0', textTransform: 'uppercase', letterSpacing: '1px' }}>{item.titulo}</span>
+                        <Icon size={16} style={{ color: 'var(--accent-gold)' }} />
+                      </div>
+                      <h3 style={{ fontSize: '28px', fontWeight: 700, color: 'var(--accent-gold)', marginBottom: '8px', fontFamily: 'var(--font-sans)' }}>
+                        ${item.valor.toLocaleString('es-AR')}
+                      </h3>
+                    </div>
+                    <p style={{ fontSize: '11px', color: '#666', lineHeight: 1.3 }}>{item.desc}</p>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* ROTACIÓN Y PENDIENTES */}
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(400px, 1fr))',
+              gap: '24px'
+            }}>
+              
+              {/* RANKING GENERAL */}
+              <div style={{
+                background: '#161616',
+                border: '1px solid #222',
+                borderRadius: '0px',
+                padding: '32px'
+              }}>
+                <h3 style={{ fontSize: '13px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '20px', color: 'var(--accent-gold)' }}>
+                  Rotación de Pastelería y Mercadería General
+                </h3>
+                
+                {topGeneral.length === 0 ? (
+                  <p style={{ fontSize: '12px', color: '#666', fontStyle: 'italic' }}>No hay ventas registradas.</p>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+                    {topGeneral.slice(0, 5).map((item, idx) => {
+                      const maxQty = topGeneral[0].cantidad;
+                      const percentage = maxQty > 0 ? (item.cantidad / maxQty) * 100 : 0;
+                      return (
+                        <div key={idx} style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
+                            <span>{idx + 1}. <b>{item.nombre}</b></span>
+                            <span style={{ color: '#a0a0a0' }}>{item.cantidad} unidades • <b style={{ color: 'var(--accent-gold)' }}>${item.total.toLocaleString('es-AR')}</b></span>
+                          </div>
+                          {/* Barra de progreso afilada */}
+                          <div style={{ height: '8px', background: '#0d0d0d', border: '1px solid #222', borderRadius: '0px', overflow: 'hidden' }}>
+                            <div style={{ width: `${percentage}%`, height: '100%', background: 'var(--accent-gold)', borderRadius: '0px' }} />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* RANKING DE INFUSIONES / CAFÉ */}
+              <div style={{
+                background: '#161616',
+                border: '1px solid #222',
+                borderRadius: '0px',
+                padding: '32px'
+              }}>
+                <h3 style={{ fontSize: '13px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '20px', color: 'var(--accent-gold)' }}>
+                  Consumo de Infusiones y Cafetería
+                </h3>
+                
+                {topInfusiones.length === 0 ? (
+                  <p style={{ fontSize: '12px', color: '#666', fontStyle: 'italic' }}>No hay ventas de cafetería registradas.</p>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+                    {topInfusiones.slice(0, 5).map((item, idx) => {
+                      const maxQty = topInfusiones[0].cantidad;
+                      const percentage = maxQty > 0 ? (item.cantidad / maxQty) * 100 : 0;
+                      return (
+                        <div key={idx} style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
+                            <span>{idx + 1}. <b>{item.nombre}</b></span>
+                            <span style={{ color: '#a0a0a0' }}>{item.cantidad} unidades • <b style={{ color: 'var(--accent-gold)' }}>${item.total.toLocaleString('es-AR')}</b></span>
+                          </div>
+                          {/* Barra de progreso afilada */}
+                          <div style={{ height: '8px', background: '#0d0d0d', border: '1px solid #222', borderRadius: '0px', overflow: 'hidden' }}>
+                            <div style={{ width: `${percentage}%`, height: '100%', background: '#2b9348', borderRadius: '0px' }} />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+            </div>
+
+            {/* MOMENTOS PICO */}
+            <div style={{
+              background: '#161616',
+              border: '1px solid #222',
+              borderRadius: '0px',
+              padding: '32px'
+            }}>
+              <h3 style={{ fontSize: '13px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '20px', color: 'var(--accent-gold)' }}>
+                Momentos Pico de Clientes (Días y Horarios)
+              </h3>
+              
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '32px' }}>
+                <div style={{ flex: 1, minWidth: '220px', borderRight: '1px solid #222', paddingRight: '20px' }}>
+                  <span style={{ fontSize: '11px', color: '#666', textTransform: 'uppercase', letterSpacing: '1px', display: 'block', marginBottom: '6px' }}>
+                    Día con más Afluencia
+                  </span>
+                  <span style={{ fontSize: '24px', fontWeight: 600, color: 'white', display: 'block', marginBottom: '4px' }}>
+                    {topDay[0]}
+                  </span>
+                  <span style={{ fontSize: '12px', color: '#a0a0a0' }}>
+                    Total de {topDay[1]} pedidos registrados este día de la semana.
+                  </span>
+                </div>
+
+                <div style={{ flex: 1, minWidth: '220px' }}>
+                  <span style={{ fontSize: '11px', color: '#666', textTransform: 'uppercase', letterSpacing: '1px', display: 'block', marginBottom: '6px' }}>
+                    Horario de mayor actividad
+                  </span>
+                  <span style={{ fontSize: '24px', fontWeight: 600, color: 'white', display: 'block', marginBottom: '4px' }}>
+                    {topHour[0]}
+                  </span>
+                  <span style={{ fontSize: '12px', color: '#a0a0a0' }}>
+                    Total de {topHour[1]} pedidos registrados en este rango de horas.
+                  </span>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        )}
+
+        {/* 5. BASE DE DATOS E INICIALIZACIÓN */}
         {tabActiva === 'database' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', maxWidth: '600px' }}>
-            <h2 style={{ fontSize: '20px', fontWeight: 500 }}>Configuración y Estado de la Base de Datos</h2>
+            <h2 style={{ fontSize: '18px', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Base de Datos</h2>
             
-            <div style={{ background: '#161616', border: '1px solid #262626', borderRadius: '12px', padding: '24px' }}>
-              <h3 style={{ fontSize: '16px', fontWeight: 600, marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Database size={16} style={{ color: 'var(--accent-gold)' }} />
+            <div style={{ background: '#161616', border: '1px solid #222', borderRadius: '0px', padding: '32px' }}>
+              <h3 style={{ fontSize: '14px', fontWeight: 600, marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--accent-gold)' }}>
+                <Database size={16} />
                 <span>Inicialización Automática</span>
               </h3>
               
               <p style={{ fontSize: '13px', color: '#a0a0a0', lineHeight: 1.6, marginBottom: '20px' }}>
-                Si acabas de clonar el proyecto o configurar las credenciales de Supabase en tu archivo <code style={{ color: 'var(--accent-gold)' }}>.env.local</code> y la base de datos está vacía, puedes presionar el botón de abajo para sembrar la base de datos.
-                Esto creará automáticamente las categorías, insertará los productos de autor de la pastelería y creará los registros de las 10 mesas iniciales de forma segura.
+                Si la base de datos de tu Supabase está vacía o recién configurada, podés presionar el botón de abajo para sembrar los datos.
+                Esto insertará automáticamente las categorías de autor, los productos de la pastelería y creará los registros de las 10 mesas iniciales de forma segura.
               </p>
 
               <button
@@ -1031,14 +1510,16 @@ export default function AdminDashboard() {
                   background: 'var(--accent-gold)',
                   color: '#121212',
                   border: 'none',
-                  borderRadius: '8px',
-                  padding: '12px 20px',
+                  borderRadius: '0px',
+                  padding: '12px 24px',
                   fontWeight: 600,
-                  fontSize: '14px',
+                  fontSize: '13px',
                   cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '8px'
+                  gap: '8px',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.5px'
                 }}
               >
                 {seeding ? (
@@ -1077,7 +1558,7 @@ export default function AdminDashboard() {
           <div style={{
             background: 'white',
             color: 'black',
-            borderRadius: '12px',
+            borderRadius: '0px', // Bordes rectos
             padding: '24px',
             width: '100%',
             maxWidth: '380px',
@@ -1154,11 +1635,13 @@ export default function AdminDashboard() {
                   flex: 1,
                   background: '#eae6df',
                   border: 'none',
-                  borderRadius: '8px',
+                  borderRadius: '0px',
                   padding: '12px',
                   fontWeight: 600,
                   cursor: 'pointer',
-                  color: '#121212'
+                  color: '#121212',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.5px'
                 }}
               >
                 Cerrar
@@ -1169,7 +1652,7 @@ export default function AdminDashboard() {
                   flex: 2,
                   background: 'var(--accent-gold)',
                   border: 'none',
-                  borderRadius: '8px',
+                  borderRadius: '0px',
                   padding: '12px',
                   fontWeight: 600,
                   cursor: 'pointer',
@@ -1177,7 +1660,9 @@ export default function AdminDashboard() {
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  gap: '6px'
+                  gap: '6px',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.5px'
                 }}
               >
                 <Printer size={16} />
@@ -1228,6 +1713,7 @@ export default function AdminDashboard() {
             border: 1px solid #ccc !important;
             box-shadow: none !important;
             page-break-inside: avoid !important;
+            border-radius: 0px !important;
           }
           .no-print-overlay {
             position: absolute !important;
@@ -1246,6 +1732,7 @@ export default function AdminDashboard() {
             width: 100% !important;
             max-width: 100% !important;
             margin: 0 !important;
+            border-radius: 0px !important;
           }
         }
       `}</style>
