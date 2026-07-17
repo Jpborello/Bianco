@@ -1,26 +1,69 @@
-@import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&display=swap');
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Paleta Elegante Bianco */
+  --bg-color: #faf9f6; /* Crema suave / Blanco roto */
+  --card-bg: #ffffff;
+  --text-primary: #121212; /* Negro suave mate */
+  --text-secondary: #656565;
+  --accent-gold: #c5a880; /* Dorado sutil de autor */
+  --accent-gold-hover: #b4966e;
+  --accent-light-gold: #f4efe6;
+  --border-color: #eae6df;
+  
+  --font-sans: 'Outfit', sans-serif;
+  --font-serif: 'Playfair Display', serif;
+  
+  --transition-smooth: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+  --shadow-soft: 0 4px 20px rgba(0, 0, 0, 0.03);
+  --shadow-medium: 0 8px 30px rgba(197, 168, 128, 0.08);
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+/* Modo oscuro opcional o para dashboards */
+.dark-theme {
+  --bg-color: #0d0d0d;
+  --card-bg: #161616;
+  --text-primary: #f5f5f5;
+  --text-secondary: #a0a0a0;
+  --border-color: #262626;
+  --shadow-soft: 0 4px 20px rgba(0, 0, 0, 0.3);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+* {
+  box-sizing: border-box;
+  padding: 0;
+  margin: 0;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background-color: var(--bg-color);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+}
+
+h1, h2, h3, h4, .font-serif {
+  font-family: var(--font-serif);
+}
+
+/* Clases de utilidad sutiles */
+.glass {
+  background: rgba(255, 255, 255, 0.75);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+}
+
+.gold-gradient-text {
+  background: linear-gradient(135deg, #121212 30%, #c5a880 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* Transición suave para todos los interactivos */
+a, button, input, select, textarea {
+  transition: var(--transition-smooth);
 }
