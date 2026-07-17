@@ -648,7 +648,7 @@ export default function MesaClientePage() {
           </div>
         ) : (
           <div className="product-grid">
-            {productosFiltrados.map((prod) => (
+            {productosFiltrados.map((prod, index) => (
               <div 
                 key={prod.id} 
                 className="product-card"
@@ -667,7 +667,8 @@ export default function MesaClientePage() {
                     src={prod.imagenUrl} 
                     alt={prod.nombre} 
                     fill 
-                    sizes="(max-width: 768px) 100vw, 33vw"
+                    sizes="(max-width: 640px) 50vw, (max-width: 768px) 100vw, 33vw"
+                    priority={index < 2}
                     style={{ objectFit: 'cover' }}
                   />
                   {prod.esCafe && (
@@ -888,7 +889,7 @@ export default function MesaClientePage() {
                     paddingBottom: '12px'
                   }}>
                     <div style={{ position: 'relative', width: '50px', height: '50px', borderRadius: '6px', overflow: 'hidden' }}>
-                      <Image src={item.producto.imagenUrl} alt={item.producto.nombre} fill style={{ objectFit: 'cover' }} />
+                      <Image src={item.producto.imagenUrl} alt={item.producto.nombre} fill sizes="50px" style={{ objectFit: 'cover' }} />
                     </div>
                     <div style={{ flex: 1 }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between' }}>

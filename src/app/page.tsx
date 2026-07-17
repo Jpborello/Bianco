@@ -161,6 +161,8 @@ export default function Home() {
               src="https://images.unsplash.com/photo-1509440159596-0249088772ff?w=100&auto=format&fit=crop&q=80" 
               alt="Bianco Logo" 
               fill
+              sizes="44px"
+              priority
               style={{ objectFit: 'cover' }}
             />
           </div>
@@ -305,7 +307,7 @@ export default function Home() {
           </div>
         ) : (
           <div className="product-grid">
-            {productosFiltrados.map((prod) => (
+            {productosFiltrados.map((prod, index) => (
               <div 
                 key={prod.id} 
                 className="product-card"
@@ -324,7 +326,8 @@ export default function Home() {
                     src={prod.imagenUrl} 
                     alt={prod.nombre} 
                     fill 
-                    sizes="(max-width: 768px) 100vw, 33vw"
+                    sizes="(max-width: 640px) 50vw, (max-width: 768px) 100vw, 33vw"
+                    priority={index < 2}
                     style={{ objectFit: 'cover' }}
                   />
                   {prod.esCafe && (
@@ -543,7 +546,7 @@ export default function Home() {
                         paddingBottom: '16px'
                       }}>
                         <div style={{ position: 'relative', width: '60px', height: '60px', borderRadius: '8px', overflow: 'hidden' }}>
-                          <Image src={item.producto.imagenUrl} alt={item.producto.nombre} fill style={{ objectFit: 'cover' }} />
+                          <Image src={item.producto.imagenUrl} alt={item.producto.nombre} fill sizes="60px" style={{ objectFit: 'cover' }} />
                         </div>
                         <div style={{ flex: 1 }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between' }}>
