@@ -67,3 +67,56 @@ h1, h2, h3, h4, .font-serif {
 a, button, input, select, textarea {
   transition: var(--transition-smooth);
 }
+
+/* Responsive Product Grid & Card Adjustments */
+.product-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 24px;
+}
+
+.product-card-image-container {
+  height: 180px;
+}
+
+@media (max-width: 640px) {
+  .product-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 12px !important;
+  }
+  .product-card {
+    border-radius: 12px !important;
+  }
+  .product-card-image-container {
+    height: 110px !important;
+  }
+  .product-card-info {
+    padding: 12px !important;
+  }
+  .product-card-title {
+    font-size: 14px !important;
+  }
+  .product-card-price {
+    font-size: 13px !important;
+  }
+  .product-card-desc {
+    display: none !important;
+  }
+  .product-card-actions {
+    gap: 4px !important;
+  }
+  .product-card-button-notes {
+    font-size: 10px !important;
+    padding: 6px 4px !important;
+  }
+  .product-card-button-add {
+    font-size: 10px !important;
+    padding: 6px 4px !important;
+  }
+}
+
+/* Hide scrollbars globally for scrollable nav bars */
+.admin-nav-scroll::-webkit-scrollbar,
+nav::-webkit-scrollbar {
+  display: none !important;
+}

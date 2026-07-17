@@ -647,14 +647,11 @@ export default function MesaClientePage() {
             <p style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>Cargando carta dulce...</p>
           </div>
         ) : (
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))',
-            gap: '18px'
-          }}>
+          <div className="product-grid">
             {productosFiltrados.map((prod) => (
               <div 
                 key={prod.id} 
+                className="product-card"
                 style={{
                   background: 'var(--card-bg)',
                   borderRadius: '14px',
@@ -665,7 +662,7 @@ export default function MesaClientePage() {
                   flexDirection: 'column'
                 }}
               >
-                <div style={{ position: 'relative', height: '150px', width: '100%' }}>
+                <div className="product-card-image-container" style={{ position: 'relative', width: '100%' }}>
                   <Image 
                     src={prod.imagenUrl} 
                     alt={prod.nombre} 
@@ -693,23 +690,24 @@ export default function MesaClientePage() {
                   )}
                 </div>
                 
-                <div style={{ padding: '14px', display: 'flex', flexDirection: 'column', flex: 1, justifyContent: 'space-between' }}>
+                <div className="product-card-info" style={{ padding: '14px', display: 'flex', flexDirection: 'column', flex: 1, justifyContent: 'space-between' }}>
                   <div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '6px' }}>
-                      <h3 style={{ fontSize: '15px', fontWeight: 600, color: 'var(--text-primary)' }}>{prod.nombre}</h3>
-                      <span style={{ fontSize: '14px', fontWeight: 700, color: 'var(--accent-gold)' }}>${prod.precio.toLocaleString('es-AR')}</span>
+                      <h3 className="product-card-title" style={{ fontSize: '15px', fontWeight: 600, color: 'var(--text-primary)' }}>{prod.nombre}</h3>
+                      <span className="product-card-price" style={{ fontSize: '14px', fontWeight: 700, color: 'var(--accent-gold)' }}>${prod.precio.toLocaleString('es-AR')}</span>
                     </div>
-                    <p style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.3, marginBottom: '14px', height: '48px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    <p className="product-card-desc" style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.3, marginBottom: '14px', height: '48px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {prod.descripcion}
                     </p>
                   </div>
 
-                  <div style={{ display: 'flex', gap: '6px' }}>
+                  <div className="product-card-actions" style={{ display: 'flex', gap: '6px' }}>
                     <button
                       onClick={() => {
                         setProductoConNotaId(prod.id);
                         setNotaTemporal('');
                       }}
+                      className="product-card-button-notes"
                       style={{
                         flex: 1,
                         background: 'transparent',
@@ -725,6 +723,7 @@ export default function MesaClientePage() {
                     </button>
                     <button
                       onClick={() => agregarAlCarrito(prod)}
+                      className="product-card-button-add"
                       style={{
                         flex: 2,
                         background: 'var(--text-primary)',

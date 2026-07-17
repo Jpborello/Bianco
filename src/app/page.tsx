@@ -304,14 +304,11 @@ export default function Home() {
             <p style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>Cargando nuestra carta dulce...</p>
           </div>
         ) : (
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
-            gap: '24px'
-          }}>
+          <div className="product-grid">
             {productosFiltrados.map((prod) => (
               <div 
                 key={prod.id} 
+                className="product-card"
                 style={{
                   background: 'var(--card-bg)',
                   borderRadius: '16px',
@@ -322,7 +319,7 @@ export default function Home() {
                   flexDirection: 'column'
                 }}
               >
-                <div style={{ position: 'relative', height: '180px', width: '100%' }}>
+                <div className="product-card-image-container" style={{ position: 'relative', width: '100%' }}>
                   <Image 
                     src={prod.imagenUrl} 
                     alt={prod.nombre} 
@@ -351,23 +348,24 @@ export default function Home() {
                   )}
                 </div>
                 
-                <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', flex: 1, justifyContent: 'space-between' }}>
+                <div className="product-card-info" style={{ padding: '16px', display: 'flex', flexDirection: 'column', flex: 1, justifyContent: 'space-between' }}>
                   <div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
-                      <h3 style={{ fontSize: '17px', fontWeight: 600, fontFamily: 'var(--font-sans)', color: 'var(--text-primary)' }}>{prod.nombre}</h3>
-                      <span style={{ fontSize: '15px', fontWeight: 700, color: 'var(--accent-gold)' }}>${prod.precio.toLocaleString('es-AR')}</span>
+                      <h3 className="product-card-title" style={{ fontSize: '17px', fontWeight: 600, fontFamily: 'var(--font-sans)', color: 'var(--text-primary)' }}>{prod.nombre}</h3>
+                      <span className="product-card-price" style={{ fontSize: '15px', fontWeight: 700, color: 'var(--accent-gold)' }}>${prod.precio.toLocaleString('es-AR')}</span>
                     </div>
-                    <p style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.4, marginBottom: '16px', height: '54px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    <p className="product-card-desc" style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.4, marginBottom: '16px', height: '54px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {prod.descripcion}
                     </p>
                   </div>
 
-                  <div style={{ display: 'flex', gap: '8px' }}>
+                  <div className="product-card-actions" style={{ display: 'flex', gap: '8px' }}>
                     <button
                       onClick={() => {
                         setProductoConNotaId(prod.id);
                         setNotaTemporal('');
                       }}
+                      className="product-card-button-notes"
                       style={{
                         flex: 1,
                         background: 'transparent',
@@ -383,6 +381,7 @@ export default function Home() {
                     </button>
                     <button
                       onClick={() => agregarAlCarrito(prod)}
+                      className="product-card-button-add"
                       style={{
                         flex: 2,
                         background: 'var(--text-primary)',

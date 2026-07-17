@@ -585,7 +585,7 @@ export default function AdminDashboard() {
         position: 'sticky',
         top: 0,
         zIndex: 40
-      }} className="no-print">
+      }} className="no-print admin-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
           <div style={{
             background: 'var(--accent-gold)',
@@ -611,7 +611,7 @@ export default function AdminDashboard() {
         </div>
 
         {/* CONTADORES RÁPIDOS Y LOGOUT */}
-        <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }} className="admin-header-controls">
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#222', padding: '6px 14px', borderRadius: '0px', border: '1px solid #333' }}>
             <Bell size={14} style={{ color: 'var(--accent-gold)' }} />
             <span style={{ fontSize: '12px' }}>Llamados: <b>{solicitudes.filter(s => s.tipo === 'llamar_mozo').length}</b></span>
@@ -660,10 +660,13 @@ export default function AdminDashboard() {
       <nav style={{
         background: '#121212',
         borderBottom: '1px solid #222',
-        padding: '0 32px',
+        padding: '0 24px',
         display: 'flex',
-        gap: '24px'
-      }} className="no-print">
+        gap: '24px',
+        overflowX: 'auto',
+        whiteSpace: 'nowrap',
+        scrollbarWidth: 'none'
+      }} className="no-print admin-nav-scroll">
         {[
           { id: 'monitoreo', label: 'Monitoreo de Mesas', icon: Coffee, visible: true },
           { id: 'pedidos', label: 'Pedidos y Delivery', icon: ShoppingBag, visible: true },
@@ -1370,7 +1373,7 @@ export default function AdminDashboard() {
             {/* ROTACIÓN Y PENDIENTES */}
             <div style={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(400px, 1fr))',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(290px, 1fr))',
               gap: '24px'
             }}>
               
@@ -1685,6 +1688,50 @@ export default function AdminDashboard() {
           }
           100% {
             box-shadow: 0 0 0 0 rgba(197, 168, 128, 0);
+          }
+        }
+
+        /* Responsive Admin Adjustments */
+        .admin-nav-scroll::-webkit-scrollbar {
+          display: none !important;
+        }
+
+        @media (max-width: 1024px) {
+          .admin-header {
+            flex-direction: column !important;
+            align-items: flex-start !important;
+            gap: 16px !important;
+            padding: 16px 20px !important;
+          }
+          .admin-header-controls {
+            width: 100% !important;
+            justify-content: flex-start !important;
+            flex-wrap: wrap !important;
+            gap: 8px !important;
+          }
+          .admin-dashboard-page main {
+            padding: 16px !important;
+          }
+        }
+
+        @media (max-width: 640px) {
+          .admin-header-controls {
+            display: grid !important;
+            grid-template-columns: 1fr 1fr !important;
+            gap: 8px !important;
+            width: 100% !important;
+          }
+          .admin-header-controls button {
+            width: 100% !important;
+            box-sizing: border-box !important;
+          }
+          /* Asegurar que el botón de cerrar sesión ocupe ancho completo */
+          .admin-header-controls button:last-child {
+            grid-column: span 2 !important;
+          }
+          .admin-header-controls > div {
+            padding: 8px !important;
+            justify-content: center !important;
           }
         }
         
