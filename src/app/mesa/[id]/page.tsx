@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import Image from 'next/image';
 import { Producto, PRODUCTOS_MOCK, CATEGORIAS } from '../../../lib/mockData';
-import { getProductos, getCategorias, getMesas, crearPedido, crearSolicitud, DbTable } from '../../../lib/dbActions';
+import { getProductos, getCategorias, getMesas, crearPedido, crearSolicitud, ocuparMesa, DbTable } from '../../../lib/dbActions';
 import { 
   Coffee, 
   ShoppingBag, 
@@ -51,9 +51,11 @@ export default function MesaClientePage() {
   // Cargar datos del localStorage y Supabase
   useEffect(() => {
     // 1. Cargar datos del cliente guardados en la sesión del navegador
+    let localNombre = '';
+    let localTelefono = '';
     try {
-      const localNombre = localStorage.getItem('bianco_nombre');
-      const localTelefono = localStorage.getItem('bianco_telefono');
+      localNombre = localStorage.getItem('bianco_nombre') || '';
+      localTelefono = localStorage.getItem('bianco_telefono') || '';
       
       if (localNombre && localTelefono) {
         setNombreCliente(localNombre);
@@ -71,9 +73,21 @@ export default function MesaClientePage() {
         const foundMesa = dbTables.find(t => t.numero === mesaNumero);
         if (foundMesa) {
           setMesaDb(foundMesa);
+
+          // Si el cliente ya está registrado en local pero la mesa en la DB figura libre, la ocupamos automáticamente
+          if (localNombre && localTelefono && foundMesa.estado === 'libre') {
+            await ocuparMesa(foundMesa.id, localNombre, localTelefono);
+            setMesaDb({
+              ...foundMesa,
+              estado: 'ocupada',
+              cliente_nombre: localNombre,
+              cliente_telefono: localTelefono,
+              ocupada_desde: new Date().toISOString()
+            });
+          }
         } else {
           // Fallback en caso de que no esté en la base de datos (ej: desarrollo local inicial)
-          setMesaDb({ id: mesaNumero, numero: mesaNumero, estado: 'libre' });
+          setMesaDb({ id: mesaNumero, numero: mesaNumero, estado: 'libre', cliente_nombre: null, cliente_telefono: null, ocupada_desde: null });
         }
 
         // Cargar categorías y productos
@@ -104,7 +118,7 @@ export default function MesaClientePage() {
         console.error('Error cargando los datos de la mesa:', err);
         setProductos(PRODUCTOS_MOCK);
         setCategorias(CATEGORIAS);
-        setMesaDb({ id: mesaNumero, numero: mesaNumero, estado: 'libre' });
+        setMesaDb({ id: mesaNumero, numero: mesaNumero, estado: 'libre', cliente_nombre: null, cliente_telefono: null, ocupada_desde: null });
       } finally {
         setCargando(false);
       }
@@ -116,7 +130,7 @@ export default function MesaClientePage() {
   }, [mesaNumero]);
 
   // Completar el registro inicial del cliente
-  const handleRegistroSubmit = (e: React.FormEvent) => {
+  const handleRegistroSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!nombreCliente.trim() || !telefonoCliente.trim()) {
       alert('Por favor completá tu nombre y celular.');
@@ -128,6 +142,18 @@ export default function MesaClientePage() {
     } catch (err) {
       console.warn('LocalStorage no disponible al guardar:', err);
     }
+
+    if (mesaDb) {
+      await ocuparMesa(mesaDb.id, nombreCliente, telefonoCliente);
+      setMesaDb(prev => prev ? {
+        ...prev,
+        estado: 'ocupada',
+        cliente_nombre: nombreCliente,
+        cliente_telefono: telefonoCliente,
+        ocupada_desde: new Date().toISOString()
+      } : null);
+    }
+    
     setRegistroCompletado(true);
   };
 

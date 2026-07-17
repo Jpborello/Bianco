@@ -25,6 +25,9 @@ export interface DbTable {
   id: number;
   numero: number;
   estado: 'libre' | 'ocupada' | 'esperando_pedido' | 'atendida';
+  cliente_nombre: string | null;
+  cliente_telefono: string | null;
+  ocupada_desde: string | null;
   created_at?: string;
 }
 
@@ -216,10 +219,15 @@ export async function atenderSolicitud(solicitudId: number): Promise<boolean> {
 // 7. Liberar/Limpiar Mesa (Poner estado 'libre' y limpiar solicitudes pendientes)
 export async function liberarMesa(mesaId: number): Promise<boolean> {
   try {
-    // Actualizar estado de la mesa a 'libre'
+    // Actualizar estado de la mesa a 'libre' y vaciar la sesión activa
     const { error: mesaError } = await supabase
       .from('mesas')
-      .update({ estado: 'libre' })
+      .update({ 
+        estado: 'libre',
+        cliente_nombre: null,
+        cliente_telefono: null,
+        ocupada_desde: null
+      })
       .eq('id', mesaId);
     
     if (mesaError) throw mesaError;
@@ -234,6 +242,27 @@ export async function liberarMesa(mesaId: number): Promise<boolean> {
     return true;
   } catch (err) {
     console.error('Error clearing table:', err);
+    return false;
+  }
+}
+
+// 7b. Ocupar Mesa (Establecer la sesión del cliente al escanear y registrarse)
+export async function ocuparMesa(mesaId: number, nombre: string, telefono: string): Promise<boolean> {
+  try {
+    const { error } = await supabase
+      .from('mesas')
+      .update({
+        estado: 'ocupada',
+        cliente_nombre: nombre,
+        cliente_telefono: telefono,
+        ocupada_desde: new Date().toISOString()
+      })
+      .eq('id', mesaId);
+
+    if (error) throw error;
+    return true;
+  } catch (err) {
+    console.error('Error occupying table:', err);
     return false;
   }
 }

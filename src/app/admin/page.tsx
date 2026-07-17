@@ -41,6 +41,7 @@ import {
 
 export default function AdminDashboard() {
   const [tabActiva, setTabActiva] = useState<'monitoreo' | 'pedidos' | 'qrs' | 'database'>('monitoreo');
+  const [mesaTicketImprimir, setMesaTicketImprimir] = useState<DbTable | null>(null);
   
   // Datos del Servidor
   const [mesas, setMesas] = useState<DbTable[]>([]);
@@ -236,6 +237,43 @@ export default function AdminDashboard() {
   const pedidosActivos = pedidos.filter(p => ['pendiente', 'preparando', 'listo'].includes(p.estado));
   const pedidosCompletados = pedidos.filter(p => ['entregado', 'cancelado'].includes(p.estado));
 
+  // Preparar consumos consolidados para ticket
+  const pedidosMesaImprimir = mesaTicketImprimir && mesaTicketImprimir.ocupada_desde 
+    ? pedidos.filter(p => 
+        p.mesa_id === mesaTicketImprimir.id && 
+        p.estado !== 'cancelado' && 
+        new Date(p.created_at) >= new Date(mesaTicketImprimir.ocupada_desde!)
+      )
+    : [];
+
+  const itemsImprimir = pedidosMesaImprimir.flatMap(p => p.detalles || []);
+  
+  interface ItemConsolidado {
+    nombre: string;
+    cantidad: number;
+    precioUnitario: number;
+    observaciones?: string;
+  }
+  
+  const consumosConsolidados: ItemConsolidado[] = [];
+  itemsImprimir.forEach(det => {
+    const prodNombre = det.producto?.nombre || 'Producto';
+    const obs = det.observaciones || '';
+    const exist = consumosConsolidados.find(i => i.nombre === prodNombre && (i.observaciones || '') === obs);
+    if (exist) {
+      exist.cantidad += det.cantidad;
+    } else {
+      consumosConsolidados.push({
+        nombre: prodNombre,
+        cantidad: det.cantidad,
+        precioUnitario: Number(det.precio_unitario),
+        observaciones: det.observaciones || undefined
+      });
+    }
+  });
+
+  const totalTicket = consumosConsolidados.reduce((sum, item) => sum + item.precioUnitario * item.cantidad, 0);
+
   return (
     <div style={{
       display: 'flex',
@@ -245,7 +283,7 @@ export default function AdminDashboard() {
       color: '#f5f5f5',
       fontFamily: 'var(--font-sans)',
       paddingBottom: '40px'
-    }} className="admin-dashboard-page">
+    }} className={`admin-dashboard-page ${mesaTicketImprimir ? 'no-print' : ''}`}>
       
       {/* HEADER DE ADMINISTRACIÓN */}
       <header style={{
@@ -399,8 +437,14 @@ export default function AdminDashboard() {
                   const llamadosMesa = solicitudes.filter(s => s.mesa_id === mesa.id && s.tipo === 'llamar_mozo');
                   const cuentasMesa = solicitudes.filter(s => s.mesa_id === mesa.id && s.tipo === 'pedir_cuenta');
                   
-                  // Pedidos pendientes vinculados a esta mesa
-                  const pedidosMesa = pedidosActivos.filter(p => p.mesa_id === mesa.id);
+                  // Pedidos de esta sesión activa (creados desde ocupada_desde, excluyendo cancelados)
+                  const pedidosMesa = mesa.ocupada_desde
+                    ? pedidos.filter(p => 
+                        p.mesa_id === mesa.id && 
+                        p.estado !== 'cancelado' && 
+                        new Date(p.created_at) >= new Date(mesa.ocupada_desde!)
+                      )
+                    : [];
 
                   const tieneLlamado = llamadosMesa.length > 0;
                   const tieneCuenta = cuentasMesa.length > 0;
@@ -526,24 +570,30 @@ export default function AdminDashboard() {
                         )}
 
                         {/* Pedidos activos de la mesa */}
-                        {pedidosMesa.length > 0 && (
+                        {(pedidosMesa.length > 0 || mesa.cliente_nombre) && (
                           <div style={{ borderTop: '1px solid #262626', paddingTop: '10px', marginTop: '10px' }}>
                             <p style={{ fontSize: '11px', color: '#a0a0a0', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                              Consumos Activos ({pedidosMesa[0].nombre_cliente}):
+                              Consumos Activos ({mesa.cliente_nombre || 'Mesa'}):
                             </p>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                              {pedidosMesa.flatMap(p => p.detalles || []).map((det, index) => (
-                                <div key={index} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
-                                  <span>{det.cantidad}x {det.producto?.nombre || 'Producto'}</span>
-                                  {det.observaciones && <span style={{ color: 'var(--accent-gold)', fontSize: '10px', fontStyle: 'italic' }}>({det.observaciones})</span>}
+                              {pedidosMesa.length === 0 ? (
+                                <p style={{ fontSize: '11px', color: '#666', fontStyle: 'italic' }}>Sin consumos registrados todavía.</p>
+                              ) : (
+                                pedidosMesa.flatMap(p => p.detalles || []).map((det, index) => (
+                                  <div key={index} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
+                                    <span>{det.cantidad}x {det.producto?.nombre || 'Producto'}</span>
+                                    {det.observaciones && <span style={{ color: 'var(--accent-gold)', fontSize: '10px', fontStyle: 'italic' }}>({det.observaciones})</span>}
+                                  </div>
+                                ))
+                              )}
+                              {pedidosMesa.length > 0 && (
+                                <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px dashed #333', paddingTop: '6px', marginTop: '6px', fontSize: '13px', fontWeight: 600 }}>
+                                  <span>Total Consumido:</span>
+                                  <span style={{ color: 'var(--accent-gold)' }}>
+                                    ${pedidosMesa.reduce((sum, p) => sum + Number(p.total), 0).toLocaleString('es-AR')}
+                                  </span>
                                 </div>
-                              ))}
-                              <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px dashed #333', paddingTop: '6px', marginTop: '6px', fontSize: '13px', fontWeight: 600 }}>
-                                <span>Total Consumido:</span>
-                                <span style={{ color: 'var(--accent-gold)' }}>
-                                  ${pedidosMesa.reduce((sum, p) => sum + Number(p.total), 0).toLocaleString('es-AR')}
-                                </span>
-                              </div>
+                              )}
                             </div>
                           </div>
                         )}
@@ -552,27 +602,56 @@ export default function AdminDashboard() {
                       {/* Botón de control de mesa */}
                       <div style={{ display: 'flex', gap: '8px', marginTop: '16px' }}>
                         {mesa.estado !== 'libre' && (
-                          <button
-                            onClick={() => handleLiberarMesa(mesa.id)}
-                            style={{
-                              flex: 1,
-                              background: '#222',
-                              border: '1px solid #333',
-                              color: '#ff4d4d',
-                              borderRadius: '8px',
-                              padding: '8px',
-                              fontSize: '12px',
-                              fontWeight: 600,
-                              cursor: 'pointer',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              gap: '4px'
-                            }}
-                          >
-                            <Trash2 size={12} />
-                            <span>Liberar Mesa</span>
-                          </button>
+                          <>
+                            <button
+                              onClick={() => setMesaTicketImprimir(mesa)}
+                              disabled={pedidosMesa.length === 0}
+                              style={{
+                                flex: 1.2,
+                                background: 'var(--accent-gold)',
+                                border: 'none',
+                                color: '#121212',
+                                borderRadius: '8px',
+                                padding: '8px',
+                                fontSize: '12px',
+                                fontWeight: 600,
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: '4px',
+                                opacity: pedidosMesa.length === 0 ? 0.5 : 1
+                              }}
+                            >
+                              <Printer size={12} />
+                              <span>Ticket</span>
+                            </button>
+                            <button
+                              onClick={() => {
+                                if (confirm(`¿Estás seguro de liberar la Mesa ${mesa.numero}? Esto borrará los consumos de la sesión actual.`)) {
+                                  handleLiberarMesa(mesa.id);
+                                }
+                              }}
+                              style={{
+                                flex: 1,
+                                background: '#222',
+                                border: '1px solid #333',
+                                color: '#ff4d4d',
+                                borderRadius: '8px',
+                                padding: '8px',
+                                fontSize: '12px',
+                                fontWeight: 600,
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: '4px'
+                              }}
+                            >
+                              <Trash2 size={12} />
+                              <span>Liberar</span>
+                            </button>
+                          </>
                         )}
                       </div>
                     </div>
@@ -980,6 +1059,136 @@ export default function AdminDashboard() {
 
       </main>
 
+      {/* MODAL PARA IMPRIMIR TICKET */}
+      {mesaTicketImprimir && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0, 0, 0, 0.85)',
+          zIndex: 100,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '20px'
+        }} className="no-print-overlay">
+          <div style={{
+            background: 'white',
+            color: 'black',
+            borderRadius: '12px',
+            padding: '24px',
+            width: '100%',
+            maxWidth: '380px',
+            boxShadow: '0 10px 40px rgba(0,0,0,0.5)',
+            display: 'flex',
+            flexDirection: 'column'
+          }} className="ticket-printable-container">
+            
+            {/* TICKET MESA */}
+            <div style={{
+              border: '1px dashed #333',
+              padding: '16px',
+              fontFamily: 'monospace',
+              fontSize: '13px',
+              lineHeight: '1.4',
+              color: '#000'
+            }}>
+              <div style={{ textAlign: 'center', marginBottom: '16px' }}>
+                <h3 style={{ fontSize: '18px', fontWeight: 'bold', margin: 0 }}>BIANCO</h3>
+                <p style={{ fontSize: '10px', margin: '2px 0 0', textTransform: 'uppercase', letterSpacing: '1px', color: '#555' }}>Pastelería de Autor</p>
+                <p style={{ fontSize: '10px', margin: '1px 0 0', color: '#555' }}>Mendoza 1420, Bianco Pastelería</p>
+                <p style={{ margin: '8px 0 0', borderTop: '1px dashed #000', borderBottom: '1px dashed #000', padding: '4px 0', fontWeight: 'bold' }}>
+                  DETALLE DE CONSUMOS
+                </p>
+              </div>
+
+              <div style={{ marginBottom: '12px' }}>
+                <div><b>MESA:</b> {mesaTicketImprimir.numero}</div>
+                <div><b>CLIENTE:</b> {mesaTicketImprimir.cliente_nombre || 'N/A'}</div>
+                {mesaTicketImprimir.cliente_telefono && <div><b>TELÉFONO:</b> {mesaTicketImprimir.cliente_telefono}</div>}
+                <div><b>FECHA:</b> {mesaTicketImprimir.ocupada_desde ? new Date(mesaTicketImprimir.ocupada_desde).toLocaleDateString('es-AR') : ''}</div>
+                <div><b>HORA ENTRADA:</b> {mesaTicketImprimir.ocupada_desde ? new Date(mesaTicketImprimir.ocupada_desde).toLocaleTimeString('es-AR', {hour:'2-digit', minute:'2-digit'}) : ''}</div>
+              </div>
+
+              <div style={{ borderTop: '1px dashed #000', paddingTop: '8px', marginBottom: '8px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', marginBottom: '4px' }}>
+                  <span>DESCRIPCIÓN</span>
+                  <span>TOTAL</span>
+                </div>
+                {consumosConsolidados.map((item, idx) => (
+                  <div key={idx} style={{ marginBottom: '4px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span>{item.cantidad}x {item.nombre}</span>
+                      <span>${(item.precioUnitario * item.cantidad).toLocaleString('es-AR')}</span>
+                    </div>
+                    {item.observaciones && (
+                      <div style={{ fontSize: '11px', color: '#555', fontStyle: 'italic', paddingLeft: '10px' }}>
+                        * {item.observaciones}
+                      </div>
+                    )}
+                    <div style={{ fontSize: '11px', color: '#666', paddingLeft: '10px' }}>
+                      (${item.precioUnitario.toLocaleString('es-AR')} c/u)
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ borderTop: '1px dashed #000', paddingTop: '8px', marginTop: '12px', display: 'flex', justifyContent: 'space-between', fontSize: '14px', fontWeight: 'bold' }}>
+                <span>TOTAL:</span>
+                <span>${totalTicket.toLocaleString('es-AR')}</span>
+              </div>
+
+              <div style={{ textAlign: 'center', marginTop: '24px', fontSize: '11px', color: '#555' }}>
+                <p>¡Gracias por elegir Bianco!</p>
+                <p style={{ marginTop: '4px' }}>Documento no válido como factura</p>
+              </div>
+            </div>
+
+            {/* BOTONES ACCION */}
+            <div style={{ display: 'flex', gap: '8px', marginTop: '20px' }} className="no-print">
+              <button
+                onClick={() => setMesaTicketImprimir(null)}
+                style={{
+                  flex: 1,
+                  background: '#eae6df',
+                  border: 'none',
+                  borderRadius: '8px',
+                  padding: '12px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  color: '#121212'
+                }}
+              >
+                Cerrar
+              </button>
+              <button
+                onClick={() => window.print()}
+                style={{
+                  flex: 2,
+                  background: 'var(--accent-gold)',
+                  border: 'none',
+                  borderRadius: '8px',
+                  padding: '12px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  color: '#121212',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '6px'
+                }}
+              >
+                <Printer size={16} />
+                <span>Imprimir</span>
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
       {/* ESTILOS IMPRIMIBLES Y EXTRAS */}
       <style jsx global>{`
         @keyframes pulse {
@@ -995,7 +1204,7 @@ export default function AdminDashboard() {
         }
         
         @media print {
-          .no-print, header, nav, button {
+          .no-print, header, nav, button, .no-print-overlay button {
             display: none !important;
           }
           body {
@@ -1019,6 +1228,24 @@ export default function AdminDashboard() {
             border: 1px solid #ccc !important;
             box-shadow: none !important;
             page-break-inside: avoid !important;
+          }
+          .no-print-overlay {
+            position: absolute !important;
+            background: none !important;
+            padding: 0 !important;
+            top: 0 !important;
+            left: 0 !important;
+            right: 0 !important;
+            bottom: 0 !important;
+            display: block !important;
+          }
+          .ticket-printable-container {
+            box-shadow: none !important;
+            border: none !important;
+            padding: 0 !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            margin: 0 !important;
           }
         }
       `}</style>
