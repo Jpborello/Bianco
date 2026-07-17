@@ -68,10 +68,10 @@ export const PRODUCTOS_MOCK: Producto[] = [
   },
   {
     id: 7,
-    nombre: "Avocado Toast Premium",
-    descripcion: "Pan de masa madre tostado, palta fresca pisada, tomates cherry confitados, huevo soft y semillas de sésamo.",
-    precio: 5800,
-    imagenUrl: "https://images.unsplash.com/photo-1541532713592-79a0317b6b77?w=600&auto=format&fit=crop&q=80",
-    categoria: "Salados"
+    nombre: "Pastel de Cómic 2D (Comic Cake)",
+    descripcion: "Nuestra tarta de tendencia con diseño de caricatura en 2D, con capas de vainilla, relleno de chocolate y delineado artesanal.",
+    precio: 6200,
+    imagenUrl: "/pastel_comic.png",
+    categoria: "Pastelería de Autor"
   }
 ];
