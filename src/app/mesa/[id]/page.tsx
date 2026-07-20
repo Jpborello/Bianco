@@ -4,7 +4,8 @@ import React, { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import Image from 'next/image';
 import { Producto, PRODUCTOS_MOCK, CATEGORIAS } from '../../../lib/mockData';
-import { getProductos, getCategorias, getMesas, crearPedido, crearSolicitud, ocuparMesa, DbTable } from '../../../lib/dbActions';
+import { getProductos, getCategorias, getMesas, crearPedido, crearSolicitud, ocuparMesa, DbTable, DbOrder } from '../../../lib/dbActions';
+import { supabase } from '../../../lib/supabase';
 import { 
   Coffee, 
   ShoppingBag, 
@@ -47,6 +48,7 @@ export default function MesaClientePage() {
   const [cuentaSolicitada, setCuentaSolicitada] = useState(false);
   const [procesandoSolicitud, setProcesandoSolicitud] = useState(false);
   const [enviandoPedido, setEnviandoPedido] = useState(false);
+  const [pedidosSesion, setPedidosSesion] = useState<DbOrder[]>([]);
 
   // Cargar datos del localStorage y Supabase
   useEffect(() => {
@@ -129,6 +131,102 @@ export default function MesaClientePage() {
     }
   }, [mesaNumero]);
 
+  // Cargar pedidos históricos de la sesión actual de la mesa
+  const cargarPedidosSesion = async (mesaId: number, ocupadaDesde: string | null) => {
+    if (!ocupadaDesde) {
+      setPedidosSesion([]);
+      return;
+    }
+    try {
+      const { data, error } = await supabase
+        .from('pedidos')
+        .select('*, detalles:detalles_pedido(*, producto:productos(*))')
+        .eq('mesa_id', mesaId)
+        .neq('estado', 'cancelado')
+        .gte('created_at', ocupadaDesde)
+        .order('id', { ascending: false });
+
+      if (!error && data) {
+        setPedidosSesion(data as unknown as DbOrder[]);
+      }
+    } catch (err) {
+      console.error('Error al cargar consumos de sesión:', err);
+    }
+  };
+
+  // Efecto para escuchar pedidos de esta mesa por Supabase Realtime y cargarlos
+  useEffect(() => {
+    if (mesaDb?.id) {
+      cargarPedidosSesion(mesaDb.id, mesaDb.ocupada_desde);
+
+      const channel = supabase
+        .channel(`mesa-${mesaDb.id}-pedidos-realtime`)
+        .on('postgres_changes', { 
+          event: '*', 
+          schema: 'public', 
+          table: 'pedidos',
+          filter: `mesa_id=eq.${mesaDb.id}`
+        }, () => {
+          cargarPedidosSesion(mesaDb.id, mesaDb.ocupada_desde);
+        })
+        .subscribe();
+
+      const channelDetalles = supabase
+        .channel(`mesa-${mesaDb.id}-detalles-realtime`)
+        .on('postgres_changes', {
+          event: '*',
+          schema: 'public',
+          table: 'detalles_pedido'
+        }, () => {
+          cargarPedidosSesion(mesaDb.id, mesaDb.ocupada_desde);
+        })
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
+        supabase.removeChannel(channelDetalles);
+      };
+    }
+  }, [mesaDb?.id, mesaDb?.ocupada_desde]);
+
+  // Efecto para escuchar cambios en la mesa por Supabase Realtime (liberación de mesa)
+  useEffect(() => {
+    if (mesaDb?.id) {
+      const channelMesa = supabase
+        .channel(`mesa-${mesaDb.id}-status-realtime`)
+        .on('postgres_changes', {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'mesas',
+          filter: `id=eq.${mesaDb.id}`
+        }, (payload) => {
+          const updatedMesa = payload.new as DbTable;
+          setMesaDb(updatedMesa);
+          
+          // Si el estado cambia a libre, se limpia la sesión del cliente
+          if (updatedMesa.estado === 'libre') {
+            setRegistroCompletado(false);
+            setNombreCliente('');
+            setTelefonoCliente('');
+            setCarrito([]);
+            setCuentaSolicitada(false);
+            setMozoLlamado(false);
+            try {
+              localStorage.removeItem('bianco_nombre');
+              localStorage.removeItem('bianco_telefono');
+            } catch (err) {
+              console.warn('Error al limpiar localStorage de mesa:', err);
+            }
+          }
+        })
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channelMesa);
+      };
+    }
+  }, [mesaDb?.id]);
+
   // Completar el registro inicial del cliente
   const handleRegistroSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -144,14 +242,19 @@ export default function MesaClientePage() {
     }
 
     if (mesaDb) {
-      await ocuparMesa(mesaDb.id, nombreCliente, telefonoCliente);
-      setMesaDb(prev => prev ? {
-        ...prev,
-        estado: 'ocupada',
-        cliente_nombre: nombreCliente,
-        cliente_telefono: telefonoCliente,
-        ocupada_desde: new Date().toISOString()
-      } : null);
+      // Ocupar mesa en Supabase SOLO si está libre actualmente en base de datos.
+      if (mesaDb.estado === 'libre') {
+        await ocuparMesa(mesaDb.id, nombreCliente, telefonoCliente);
+        setMesaDb(prev => prev ? {
+          ...prev,
+          estado: 'ocupada',
+          cliente_nombre: nombreCliente,
+          cliente_telefono: telefonoCliente,
+          ocupada_desde: new Date().toISOString()
+        } : null);
+      } else {
+        console.log("Unido a la sesión compartida de la mesa.");
+      }
     }
     
     setRegistroCompletado(true);
@@ -388,6 +491,44 @@ export default function MesaClientePage() {
     );
   }
 
+  // Consolidar todos los ítems de los pedidos de la sesión para mostrar al cliente
+  const detallesPedidosSesion = pedidosSesion.flatMap(p => p.detalles || []);
+
+  const consumosConsolidadosCliente: {
+    nombre: string;
+    cantidad: number;
+    precioUnitario: number;
+    estado: string;
+    observaciones?: string;
+  }[] = [];
+
+  detallesPedidosSesion.forEach(det => {
+    const prodNombre = det.producto?.nombre || 'Producto';
+    const obs = det.observaciones || '';
+    const parentOrder = pedidosSesion.find(p => p.id === det.pedido_id);
+    const estadoItem = parentOrder ? parentOrder.estado : 'pendiente';
+
+    const exist = consumosConsolidadosCliente.find(i => 
+      i.nombre === prodNombre && 
+      (i.observaciones || '') === obs &&
+      i.estado === estadoItem
+    );
+
+    if (exist) {
+      exist.cantidad += det.cantidad;
+    } else {
+      consumosConsolidadosCliente.push({
+        nombre: prodNombre,
+        cantidad: det.cantidad,
+        precioUnitario: Number(det.precio_unitario),
+        estado: estadoItem,
+        observaciones: det.observaciones || undefined
+      });
+    }
+  });
+
+  const totalConsumidoMesa = consumosConsolidadosCliente.reduce((sum, item) => sum + (item.precioUnitario * item.cantidad), 0);
+
   // PANTALLA PRINCIPAL DE CARTA DE MESA
   return (
     <div className="main-container" style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', position: 'relative' }}>
@@ -526,7 +667,7 @@ export default function MesaClientePage() {
           gap: '8px'
         }}>
           <Receipt size={14} style={{ color: '#2b9348' }} />
-          <span>¡Cuenta solicitada! El mozo traerá la cuenta a la mesa de inmediato.</span>
+          <span>¡Cuenta solicitada! El mozo traerá el ticket de la mesa por un total de <b>${totalConsumidoMesa.toLocaleString('es-AR')}</b> de inmediato.</span>
         </div>
       )}
 
@@ -592,6 +733,73 @@ export default function MesaClientePage() {
           <span>Pedir Cuenta</span>
         </button>
       </section>
+
+      {/* DETALLE DE CONSUMO EN MESA */}
+      {consumosConsolidadosCliente.length > 0 && (
+        <section style={{ padding: '0 20px 8px' }}>
+          <div style={{
+            background: 'var(--card-bg)',
+            border: '1px solid var(--border-color)',
+            borderRadius: '12px',
+            padding: '16px 20px',
+            boxShadow: 'var(--shadow-soft)'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+              <h3 style={{ fontSize: '13px', fontWeight: 600, letterSpacing: '0.5px', textTransform: 'uppercase', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <Utensils size={14} style={{ color: 'var(--accent-gold)' }} />
+                <span>Detalle de Consumos</span>
+              </h3>
+              <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>En tiempo real</span>
+            </div>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {consumosConsolidadosCliente.map((item, idx) => (
+                <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', fontSize: '13px' }}>
+                  <div style={{ flex: 1, paddingRight: '8px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                      <span style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{item.cantidad}x {item.nombre}</span>
+                      <span style={{
+                        fontSize: '9px',
+                        fontWeight: 'bold',
+                        textTransform: 'uppercase',
+                        padding: '1px 5px',
+                        borderRadius: '4px',
+                        background: 
+                          item.estado === 'pendiente' ? '#eee' :
+                          item.estado === 'preparando' ? 'rgba(245, 158, 11, 0.12)' :
+                          item.estado === 'listo' ? 'rgba(28, 71, 33, 0.12)' : 'rgba(43, 147, 72, 0.12)',
+                        color: 
+                          item.estado === 'pendiente' ? '#666' :
+                          item.estado === 'preparando' ? '#d97706' :
+                          item.estado === 'listo' ? '#1c4721' : '#2b9348'
+                      }}>
+                        {item.estado === 'pendiente' ? 'Recibido' :
+                         item.estado === 'preparando' ? 'Preparando' :
+                         item.estado === 'listo' ? 'Listo' : 'Servido'}
+                      </span>
+                    </div>
+                    {item.observaciones && (
+                      <span style={{ display: 'block', fontSize: '11px', color: 'var(--accent-gold)', fontStyle: 'italic', marginTop: '2px' }}>
+                        Nota: {item.observaciones}
+                      </span>
+                    )}
+                  </div>
+                  <span style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>
+                    ${(item.precioUnitario * item.cantidad).toLocaleString('es-AR')}
+                  </span>
+                </div>
+              ))}
+              
+              <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px dashed var(--border-color)', paddingTop: '10px', marginTop: '4px', fontSize: '14px', fontWeight: 600 }}>
+                <span>Total a pagar:</span>
+                <span style={{ color: 'var(--accent-gold)' }}>
+                  ${totalConsumidoMesa.toLocaleString('es-AR')}
+                </span>
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* CATEGORÍAS */}
       <nav style={{
