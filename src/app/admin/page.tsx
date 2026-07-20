@@ -14,7 +14,14 @@ import {
   DbTable,
   DbOrder,
   DbRequest,
-  getProductos
+  getProductos,
+  crearProducto,
+  actualizarProducto,
+  eliminarProducto,
+  getCategorias,
+  ocuparMesa,
+  DbProduct,
+  DbCategory
 } from '../../lib/dbActions';
 import { 
   Bell, 
@@ -51,12 +58,36 @@ export default function AdminDashboard() {
   const [solicitaPin, setSolicitaPin] = useState(false);
 
   // Navegación
-  const [tabActiva, setTabActiva] = useState<'monitoreo' | 'pedidos' | 'qrs' | 'metrics' | 'database'>('monitoreo');
+  const [tabActiva, setTabActiva] = useState<'monitoreo' | 'pedidos' | 'qrs' | 'metrics' | 'inventario'>('monitoreo');
   
   // Datos del Servidor
   const [mesas, setMesas] = useState<DbTable[]>([]);
   const [pedidos, setPedidos] = useState<DbOrder[]>([]);
   const [solicitudes, setSolicitudes] = useState<DbRequest[]>([]);
+  const [productosList, setProductosList] = useState<DbProduct[]>([]);
+  const [categoriasList, setCategoriasList] = useState<DbCategory[]>([]);
+
+  // Estados del Formulario de Productos (CRUD)
+  const [mostrarFormProducto, setMostrarFormProducto] = useState(false);
+  const [productoEditando, setProductoEditando] = useState<DbProduct | null>(null);
+  const [formNombre, setFormNombre] = useState('');
+  const [formDescripcion, setFormDescripcion] = useState('');
+  const [formPrecio, setFormPrecio] = useState('');
+  const [formImagenUrl, setFormImagenUrl] = useState('');
+  const [formCategoriaId, setFormCategoriaId] = useState<string | number>('');
+  const [formStock, setFormStock] = useState('');
+  const [formStockMinimo, setFormStockMinimo] = useState('2');
+  const [formEsCafe, setFormEsCafe] = useState(false);
+  const [formDisponible, setFormDisponible] = useState(true);
+
+  // Estados para el Consumo Manual desde Caja
+  const [mostrarModalConsumoManual, setMostrarModalConsumoManual] = useState(false);
+  const [mesaConsumoManual, setMesaConsumoManual] = useState<DbTable | null>(null);
+  const [itemsConsumoManual, setItemsConsumoManual] = useState<{ producto: DbProduct; cantidad: number; observaciones?: string }[]>([]);
+  const [manualProductoSeleccionadoId, setManualProductoSeleccionadoId] = useState<string | number>('');
+  const [manualCantidad, setManualCantidad] = useState(1);
+  const [manualObservaciones, setManualObservaciones] = useState('');
+  const [manualEnviarACocina, setManualEnviarACocina] = useState(true);
   
   // Estados de interfaz
   const [cargando, setCargando] = useState(true);
@@ -126,6 +157,24 @@ export default function AdminDashboard() {
         }
         prevSolicitudesCount.current = countNuevas;
         setSolicitudes(dbSolicitudes as unknown as DbRequest[]);
+      }
+
+      // Cargar productos
+      const { data: dbProds, error: prodErr } = await supabase
+        .from('productos')
+        .select('*, categoria:categorias(*)')
+        .order('id', { ascending: true });
+      if (!prodErr && dbProds) {
+        setProductosList(dbProds as unknown as DbProduct[]);
+      }
+
+      // Cargar categorías
+      const { data: dbCats, error: catsErr } = await supabase
+        .from('categorias')
+        .select('*')
+        .order('nombre', { ascending: true });
+      if (!catsErr && dbCats) {
+        setCategoriasList(dbCats as unknown as DbCategory[]);
       }
     } catch (err) {
       console.error('Error cargando datos del panel admin:', err);
@@ -197,12 +246,20 @@ export default function AdminDashboard() {
         })
         .subscribe();
 
+      const channelProductos = supabase
+        .channel('admin-productos')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'productos' }, () => {
+          cargarDatosCompletos();
+        })
+        .subscribe();
+
       const interval = setInterval(cargarDatosCompletos, 15000);
 
       return () => {
         supabase.removeChannel(channelPedidos);
         supabase.removeChannel(channelMesas);
         supabase.removeChannel(channelSolicitudes);
+        supabase.removeChannel(channelProductos);
         clearInterval(interval);
       };
     }
@@ -227,6 +284,111 @@ export default function AdminDashboard() {
     sessionStorage.removeItem('bianco_admin_rol');
     setRolActivo(null);
     setSolicitaPin(false);
+  };
+
+  // Guardar o actualizar producto en la base de datos (CRUD)
+  const handleProductoSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formNombre.trim() || !formPrecio.trim() || !formCategoriaId) {
+      alert('Por favor completa los campos requeridos.');
+      return;
+    }
+
+    const price = Number(formPrecio);
+    if (isNaN(price) || price < 0) {
+      alert('El precio debe ser un número válido mayor o igual a 0.');
+      return;
+    }
+
+    const stockVal = formStock.trim() === '' ? null : Number(formStock);
+    const stockMinVal = formStockMinimo.trim() === '' ? 0 : Number(formStockMinimo);
+
+    const productPayload = {
+      nombre: formNombre.trim(),
+      descripcion: formDescripcion.trim() || null,
+      precio: price,
+      imagen_url: formImagenUrl.trim() || null,
+      disponible: formDisponible,
+      es_cafe: formEsCafe,
+      categoria_id: Number(formCategoriaId),
+      stock: stockVal,
+      stock_minimo: stockMinVal
+    };
+
+    try {
+      let res;
+      if (productoEditando) {
+        res = await actualizarProducto(productoEditando.id, productPayload);
+      } else {
+        res = await crearProducto(productPayload);
+      }
+
+      if (res.success) {
+        setMostrarFormProducto(false);
+        setProductoEditando(null);
+        cargarDatosCompletos();
+        alert('Producto guardado exitosamente.');
+      } else {
+        alert('Error al guardar producto: ' + res.error);
+      }
+    } catch (err: any) {
+      alert('Error: ' + err.message);
+    }
+  };
+
+  // Guardar un pedido manual desde caja/monitoreo de mesas
+  const handleConfirmarConsumoManual = async () => {
+    if (!mesaConsumoManual || itemsConsumoManual.length === 0) return;
+
+    try {
+      let activeNombre = mesaConsumoManual.cliente_nombre;
+      let activeTelefono = mesaConsumoManual.cliente_telefono;
+      
+      // A. Si la mesa está libre, ocuparla automáticamente en Supabase
+      if (mesaConsumoManual.estado === 'libre') {
+        activeNombre = 'Mesa (Manual)';
+        activeTelefono = '-';
+        await ocuparMesa(mesaConsumoManual.id, activeNombre, activeTelefono);
+      }
+
+      // B. Calcular el total
+      const totalPedido = itemsConsumoManual.reduce((sum, item) => sum + (item.producto.precio * item.cantidad), 0);
+
+      // C. Crear el pedido
+      const res = await crearPedido({
+        tipo: 'mesa',
+        mesa_id: mesaConsumoManual.id,
+        nombre_cliente: activeNombre || 'Mesa (Manual)',
+        telefono: activeTelefono || '-',
+        total: totalPedido,
+        items: itemsConsumoManual.map(item => ({
+          productoId: item.producto.id,
+          cantidad: item.cantidad,
+          precioUnitario: item.producto.precio,
+          observaciones: item.observaciones
+        }))
+      });
+
+      if (res.error) throw res.error;
+
+      // D. Si no se envía a cocina (es decir, ya fue entregado), actualizar el estado del pedido
+      if (!manualEnviarACocina && res.data) {
+        await cambiarEstadoPedido(res.data.id, 'entregado');
+      }
+
+      // Cerrar modal y limpiar
+      setMostrarModalConsumoManual(false);
+      setMesaConsumoManual(null);
+      setItemsConsumoManual([]);
+      setManualProductoSeleccionadoId('');
+      setManualCantidad(1);
+      setManualObservaciones('');
+      cargarDatosCompletos();
+      alert('Consumo agregado exitosamente a la mesa ' + mesaConsumoManual.numero);
+    } catch (err: any) {
+      console.error('Error al confirmar consumo manual:', err);
+      alert('Error: ' + err.message);
+    }
   };
 
   // Inicializar Base de Datos
@@ -672,7 +834,7 @@ export default function AdminDashboard() {
           { id: 'pedidos', label: 'Pedidos y Delivery', icon: ShoppingBag, visible: true },
           { id: 'qrs', label: 'Códigos QR', icon: QrCode, visible: true },
           { id: 'metrics', label: 'Métricas de Venta', icon: BarChart3, visible: rolActivo === 'dueno' },
-          { id: 'database', label: 'Base de Datos', icon: Database, visible: true }
+          { id: 'inventario', label: 'Inventario y Productos', icon: Database, visible: true }
         ].filter(t => t.visible).map(tab => {
           const Icon = tab.icon;
           const activo = tabActiva === tab.id;
@@ -915,14 +1077,46 @@ export default function AdminDashboard() {
                       </div>
 
                       {/* Botones de control de mesa */}
-                      <div style={{ display: 'flex', gap: '8px', marginTop: '20px' }}>
+                      <div style={{ display: 'flex', gap: '8px', marginTop: '20px', flexWrap: 'wrap' }}>
+                        <button
+                          onClick={() => {
+                            setMesaConsumoManual(mesa);
+                            setItemsConsumoManual([]);
+                            setManualProductoSeleccionadoId(productosList[0]?.id || '');
+                            setManualCantidad(1);
+                            setManualObservaciones('');
+                            setManualEnviarACocina(true);
+                            setMostrarModalConsumoManual(true);
+                          }}
+                          style={{
+                            flex: 1,
+                            minWidth: '80px',
+                            background: '#222',
+                            border: '1px solid #444',
+                            color: '#ccc',
+                            borderRadius: '0px',
+                            padding: '8px',
+                            fontSize: '11px',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '4px',
+                            textTransform: 'uppercase'
+                          }}
+                        >
+                          <span>+ Consumo</span>
+                        </button>
+
                         {mesa.estado !== 'libre' && (
                           <>
                             <button
                               onClick={() => setMesaTicketImprimir(mesa)}
                               disabled={pedidosMesa.length === 0}
                               style={{
-                                flex: 1.2,
+                                flex: 1,
+                                minWidth: '80px',
                                 background: 'var(--accent-gold)',
                                 border: 'none',
                                 color: '#121212',
@@ -950,6 +1144,7 @@ export default function AdminDashboard() {
                               }}
                               style={{
                                 flex: 1,
+                                minWidth: '80px',
                                 background: '#222',
                                 border: '1px solid #333',
                                 color: '#ff4d4d',
@@ -1490,53 +1685,196 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* 5. BASE DE DATOS E INICIALIZACIÓN */}
-        {tabActiva === 'database' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', maxWidth: '600px' }}>
-            <h2 style={{ fontSize: '18px', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Base de Datos</h2>
-            
-            <div style={{ background: '#161616', border: '1px solid #222', borderRadius: '0px', padding: '32px' }}>
-              <h3 style={{ fontSize: '14px', fontWeight: 600, marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--accent-gold)' }}>
-                <Database size={16} />
-                <span>Inicialización Automática</span>
-              </h3>
-              
-              <p style={{ fontSize: '13px', color: '#a0a0a0', lineHeight: 1.6, marginBottom: '20px' }}>
-                Si la base de datos de tu Supabase está vacía o recién configurada, podés presionar el botón de abajo para sembrar los datos.
-                Esto insertará automáticamente las categorías de autor, los productos de la pastelería y creará los registros de las 10 mesas iniciales de forma segura.
-              </p>
-
+        {/* 5. INVENTARIO Y GESTIÓN DE PRODUCTOS */}
+        {tabActiva === 'inventario' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <h2 style={{ fontSize: '18px', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Inventario de Productos</h2>
+                <p style={{ fontSize: '12px', color: '#a0a0a0' }}>Controlá el stock disponible y agregá nuevas delicias al menú.</p>
+              </div>
               <button
-                onClick={handleSeed}
-                disabled={seeding}
+                onClick={() => {
+                  setProductoEditando(null);
+                  setFormNombre('');
+                  setFormDescripcion('');
+                  setFormPrecio('');
+                  setFormImagenUrl('');
+                  setFormCategoriaId(categoriasList[0]?.id || '');
+                  setFormStock('');
+                  setFormStockMinimo('2');
+                  setFormEsCafe(false);
+                  setFormDisponible(true);
+                  setMostrarFormProducto(true);
+                }}
                 style={{
                   background: 'var(--accent-gold)',
                   color: '#121212',
                   border: 'none',
                   borderRadius: '0px',
-                  padding: '12px 24px',
+                  padding: '10px 18px',
                   fontWeight: 600,
                   fontSize: '13px',
                   cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '8px',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.5px'
+                  gap: '6px',
+                  textTransform: 'uppercase'
                 }}
               >
-                {seeding ? (
-                  <>
-                    <Loader2 className="animate-spin" size={16} />
-                    <span>Sembrando datos...</span>
-                  </>
-                ) : (
-                  <>
-                    <Database size={16} />
-                    <span>Inicializar / Sembrar Base de Datos</span>
-                  </>
-                )}
+                <span>+ Agregar Producto</span>
               </button>
+            </div>
+
+            {/* LISTADO DE PRODUCTOS */}
+            <div style={{ background: '#161616', border: '1px solid #222', borderRadius: '0px', overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid #222', color: '#888' }}>
+                    <th style={{ padding: '16px 20px' }}>Imagen</th>
+                    <th style={{ padding: '16px 20px' }}>Nombre</th>
+                    <th style={{ padding: '16px 20px' }}>Categoría</th>
+                    <th style={{ padding: '16px 20px' }}>Precio</th>
+                    <th style={{ padding: '16px 20px' }}>Stock</th>
+                    <th style={{ padding: '16px 20px' }}>Mínimo</th>
+                    <th style={{ padding: '16px 20px', textAlign: 'right' }}>Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {productosList.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} style={{ padding: '32px', textAlign: 'center', color: '#666' }}>
+                        No hay productos registrados. Usá el botón de arriba o inicializá la base de datos más abajo.
+                      </td>
+                    </tr>
+                  ) : (
+                    productosList.map((prod) => {
+                      const esBajoStock = prod.stock !== null && prod.stock <= (prod.stock_minimo ?? 0);
+                      const esAgotado = prod.stock !== null && prod.stock <= 0;
+                      
+                      return (
+                        <tr key={prod.id} style={{ borderBottom: '1px solid #222', transition: 'background 0.2s' }}>
+                          <td style={{ padding: '12px 20px' }}>
+                            <div style={{ position: 'relative', width: '40px', height: '40px', background: '#222', border: '1px solid #333' }}>
+                              {prod.imagen_url && (
+                                <img src={prod.imagen_url} alt={prod.nombre} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                              )}
+                            </div>
+                          </td>
+                          <td style={{ padding: '12px 20px' }}>
+                            <span style={{ fontWeight: 600, display: 'block', color: 'white' }}>{prod.nombre}</span>
+                            <span style={{ fontSize: '11px', color: '#888', display: 'block', maxWidth: '280px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {prod.descripcion}
+                            </span>
+                          </td>
+                          <td style={{ padding: '12px 20px', color: '#a0a0a0' }}>{prod.categoria?.nombre || '-'}</td>
+                          <td style={{ padding: '12px 20px', fontWeight: 600, color: 'var(--accent-gold)' }}>
+                            ${Number(prod.precio).toLocaleString('es-AR')}
+                          </td>
+                          <td style={{ padding: '12px 20px' }}>
+                            {prod.stock === null ? (
+                              <span style={{ color: '#888' }}>Ilimitado</span>
+                            ) : esAgotado ? (
+                              <span style={{ background: 'rgba(220, 38, 38, 0.15)', color: '#ff4d4d', padding: '3px 8px', fontWeight: 'bold', fontSize: '11px' }}>
+                                AGOTADO (0)
+                              </span>
+                            ) : esBajoStock ? (
+                              <span style={{ background: 'rgba(217, 119, 6, 0.15)', color: '#f59e0b', padding: '3px 8px', fontWeight: 'bold', fontSize: '11px' }}>
+                                BAJO STOCK ({prod.stock})
+                              </span>
+                            ) : (
+                              <span style={{ color: '#2b9348', fontWeight: 600 }}>{prod.stock} u.</span>
+                            )}
+                          </td>
+                          <td style={{ padding: '12px 20px', color: '#666' }}>{prod.stock === null ? '-' : `${prod.stock_minimo} u.`}</td>
+                          <td style={{ padding: '12px 20px', textAlign: 'right' }}>
+                            <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                              <button
+                                onClick={() => {
+                                  setProductoEditando(prod);
+                                  setFormNombre(prod.nombre);
+                                  setFormDescripcion(prod.descripcion || '');
+                                  setFormPrecio(prod.precio.toString());
+                                  setFormImagenUrl(prod.imagen_url || '');
+                                  setFormCategoriaId(prod.categoria_id?.toString() || '');
+                                  setFormStock(prod.stock !== null ? prod.stock.toString() : '');
+                                  setFormStockMinimo((prod.stock_minimo ?? 2).toString());
+                                  setFormEsCafe(prod.es_cafe);
+                                  setFormDisponible(prod.disponible);
+                                  setMostrarFormProducto(true);
+                                }}
+                                style={{
+                                  background: 'transparent',
+                                  border: '1px solid #444',
+                                  color: '#ccc',
+                                  padding: '5px 10px',
+                                  cursor: 'pointer',
+                                  fontSize: '11px',
+                                  textTransform: 'uppercase'
+                                }}
+                              >
+                                Editar
+                              </button>
+                              <button
+                                onClick={async () => {
+                                  if (confirm(`¿Seguro que querés eliminar el producto "${prod.nombre}"?`)) {
+                                    const res = await eliminarProducto(prod.id);
+                                    if (res.success) {
+                                      cargarDatosCompletos();
+                                    } else {
+                                      alert('Error al eliminar: ' + res.error);
+                                    }
+                                  }
+                                }}
+                                style={{
+                                  background: 'transparent',
+                                  border: '1px solid #ff4d4d',
+                                  color: '#ff4d4d',
+                                  padding: '5px 10px',
+                                  cursor: 'pointer',
+                                  fontSize: '11px',
+                                  textTransform: 'uppercase'
+                                }}
+                              >
+                                Eliminar
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* SEEDER DE EMERGENCIA */}
+            <div style={{ marginTop: '24px', borderTop: '1px solid #222', paddingTop: '24px' }}>
+              <div style={{ background: '#161616', border: '1px solid #222', borderRadius: '0px', padding: '24px' }}>
+                <h4 style={{ fontSize: '13px', fontWeight: 600, color: '#888', marginBottom: '8px', textTransform: 'uppercase' }}>
+                  Inicialización del Sistema
+                </h4>
+                <p style={{ fontSize: '12px', color: '#666', marginBottom: '16px', lineHeight: '1.4' }}>
+                  Si recién instalás la base de datos, podés recargar los productos iniciales de Bianco (Pastelería de Autor, Viennoiserie, Cafés, Salados).
+                </p>
+                <button
+                  onClick={handleSeed}
+                  disabled={seeding}
+                  style={{
+                    background: '#222',
+                    border: '1px solid #333',
+                    color: 'white',
+                    padding: '8px 16px',
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    textTransform: 'uppercase'
+                  }}
+                >
+                  {seeding ? 'Cargando Mocks...' : 'Sembrar Catálogo Inicial'}
+                </button>
+                {seedingMsg && <p style={{ fontSize: '12px', color: 'var(--accent-gold)', marginTop: '8px' }}>{seedingMsg}</p>}
+              </div>
             </div>
           </div>
         )}
@@ -1673,6 +2011,421 @@ export default function AdminDashboard() {
               </button>
             </div>
 
+          </div>
+        </div>
+      )}
+
+      {/* MODAL PARA CREAR/EDITAR PRODUCTO */}
+      {mostrarFormProducto && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0, 0, 0, 0.8)',
+          zIndex: 100,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '20px'
+        }}>
+          <div style={{
+            background: '#161616',
+            border: '1px solid #333',
+            color: 'white',
+            borderRadius: '0px',
+            padding: '32px',
+            width: '100%',
+            maxWidth: '500px',
+            maxHeight: '90vh',
+            overflowY: 'auto',
+            boxShadow: '0 10px 40px rgba(0,0,0,0.8)'
+          }}>
+            <h3 style={{ fontSize: '16px', fontWeight: 600, textTransform: 'uppercase', marginBottom: '24px', letterSpacing: '0.5px', color: 'var(--accent-gold)' }}>
+              {productoEditando ? `Editar Producto: ${productoEditando.nombre}` : 'Agregar Nuevo Producto'}
+            </h3>
+
+            <form onSubmit={handleProductoSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                <label style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase' }}>Nombre *</label>
+                <input
+                  type="text"
+                  required
+                  value={formNombre}
+                  onChange={(e) => setFormNombre(e.target.value)}
+                  style={{ background: '#0d0d0d', border: '1px solid #333', color: 'white', padding: '10px', fontSize: '13px' }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                <label style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase' }}>Descripción</label>
+                <textarea
+                  value={formDescripcion}
+                  onChange={(e) => setFormDescripcion(e.target.value)}
+                  style={{ background: '#0d0d0d', border: '1px solid #333', color: 'white', padding: '10px', fontSize: '13px', minHeight: '60px', fontFamily: 'inherit' }}
+                />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <label style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase' }}>Precio ($) *</label>
+                  <input
+                    type="number"
+                    required
+                    value={formPrecio}
+                    onChange={(e) => setFormPrecio(e.target.value)}
+                    style={{ background: '#0d0d0d', border: '1px solid #333', color: 'white', padding: '10px', fontSize: '13px' }}
+                  />
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <label style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase' }}>Categoría *</label>
+                  <select
+                    value={formCategoriaId}
+                    onChange={(e) => setFormCategoriaId(e.target.value)}
+                    style={{ background: '#0d0d0d', border: '1px solid #333', color: 'white', padding: '10px', fontSize: '13px' }}
+                  >
+                    <option value="">Seleccionar...</option>
+                    {categoriasList.map((cat) => (
+                      <option key={cat.id} value={cat.id}>{cat.nombre}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                <label style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase' }}>Imagen URL (Unsplash o Link)</label>
+                <input
+                  type="text"
+                  value={formImagenUrl}
+                  onChange={(e) => setFormImagenUrl(e.target.value)}
+                  placeholder="Dejar vacío para usar predeterminada"
+                  style={{ background: '#0d0d0d', border: '1px solid #333', color: 'white', padding: '10px', fontSize: '13px' }}
+                />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <label style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase' }}>Stock (Vacío = Ilimitado)</label>
+                  <input
+                    type="number"
+                    value={formStock}
+                    onChange={(e) => setFormStock(e.target.value)}
+                    placeholder="Ej: 20"
+                    style={{ background: '#0d0d0d', border: '1px solid #333', color: 'white', padding: '10px', fontSize: '13px' }}
+                  />
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <label style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase' }}>Stock Mínimo (Alerta)</label>
+                  <input
+                    type="number"
+                    value={formStockMinimo}
+                    onChange={(e) => setFormStockMinimo(e.target.value)}
+                    style={{ background: '#0d0d0d', border: '1px solid #333', color: 'white', padding: '10px', fontSize: '13px' }}
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: '20px', marginTop: '8px' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={formEsCafe}
+                    onChange={(e) => setFormEsCafe(e.target.checked)}
+                    style={{ cursor: 'pointer' }}
+                  />
+                  <span>¿Es Café / Infusión?</span>
+                </label>
+
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={formDisponible}
+                    onChange={(e) => setFormDisponible(e.target.checked)}
+                    style={{ cursor: 'pointer' }}
+                  />
+                  <span>Disponible para Venta</span>
+                </label>
+              </div>
+
+              <div style={{ display: 'flex', gap: '10px', marginTop: '16px' }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMostrarFormProducto(false);
+                    setProductoEditando(null);
+                  }}
+                  style={{
+                    flex: 1,
+                    background: '#222',
+                    border: '1px solid #333',
+                    color: 'white',
+                    padding: '12px',
+                    cursor: 'pointer',
+                    textTransform: 'uppercase',
+                    fontSize: '12px',
+                    fontWeight: 600
+                  }}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  style={{
+                    flex: 2,
+                    background: 'var(--accent-gold)',
+                    color: '#121212',
+                    border: 'none',
+                    padding: '12px',
+                    cursor: 'pointer',
+                    textTransform: 'uppercase',
+                    fontSize: '12px',
+                    fontWeight: 600
+                  }}
+                >
+                  {productoEditando ? 'Guardar Cambios' : 'Crear Producto'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL PARA AGREGAR CONSUMO MANUAL (DESDE CAJA) */}
+      {mostrarModalConsumoManual && mesaConsumoManual && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0, 0, 0, 0.8)',
+          zIndex: 100,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '20px'
+        }}>
+          <div style={{
+            background: '#161616',
+            border: '1px solid #333',
+            color: 'white',
+            borderRadius: '0px',
+            padding: '32px',
+            width: '100%',
+            maxWidth: '520px',
+            maxHeight: '90vh',
+            overflowY: 'auto',
+            boxShadow: '0 10px 40px rgba(0,0,0,0.8)'
+          }}>
+            <h3 style={{ fontSize: '16px', fontWeight: 600, textTransform: 'uppercase', marginBottom: '8px', letterSpacing: '0.5px', color: 'var(--accent-gold)' }}>
+              Mesa {mesaConsumoManual.numero} - Agregar Consumo Manual
+            </h3>
+            <p style={{ fontSize: '12px', color: '#a0a0a0', marginBottom: '24px' }}>
+              Registrá consumos directamente para clientes en la mesa.
+            </p>
+
+            {/* FORMULARIO AGREGAR ÍTEM TEMPORAL */}
+            <div style={{ background: '#0d0d0d', border: '1px solid #222', padding: '16px', marginBottom: '20px' }}>
+              <h4 style={{ fontSize: '12px', textTransform: 'uppercase', fontWeight: 600, color: '#888', marginBottom: '12px' }}>
+                Seleccionar Producto
+              </h4>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                  <div style={{ flex: 2, minWidth: '180px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    <label style={{ fontSize: '10px', color: '#666' }}>Producto</label>
+                    <select
+                      value={manualProductoSeleccionadoId}
+                      onChange={(e) => setManualProductoSeleccionadoId(e.target.value)}
+                      style={{ background: '#161616', border: '1px solid #333', color: 'white', padding: '8px', fontSize: '13px' }}
+                    >
+                      <option value="">Selecciona un producto...</option>
+                      {productosList.map((p) => {
+                        const esAgotado = p.stock !== null && p.stock <= 0;
+                        return (
+                          <option key={p.id} value={p.id} disabled={esAgotado}>
+                            {p.nombre} - ${Number(p.precio).toLocaleString('es-AR')} {esAgotado ? '(Sin Stock)' : p.stock !== null ? `(${p.stock} u.)` : ''}
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </div>
+                  
+                  <div style={{ flex: 1, minWidth: '80px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    <label style={{ fontSize: '10px', color: '#666' }}>Cantidad</label>
+                    <input
+                      type="number"
+                      min={1}
+                      value={manualCantidad}
+                      onChange={(e) => setManualCantidad(Math.max(1, Number(e.target.value)))}
+                      style={{ background: '#161616', border: '1px solid #333', color: 'white', padding: '8px', fontSize: '13px', textAlign: 'center' }}
+                    />
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <label style={{ fontSize: '10px', color: '#666' }}>Notas / Observaciones (Opcional)</label>
+                  <input
+                    type="text"
+                    value={manualObservaciones}
+                    onChange={(e) => setManualObservaciones(e.target.value)}
+                    placeholder="Ej: Con edulcorante, bien caliente"
+                    style={{ background: '#161616', border: '1px solid #333', color: 'white', padding: '8px', fontSize: '13px' }}
+                  />
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!manualProductoSeleccionadoId) {
+                      alert('Seleccioná un producto.');
+                      return;
+                    }
+                    const prod = productosList.find(p => p.id === Number(manualProductoSeleccionadoId));
+                    if (!prod) return;
+
+                    // Validar stock local antes de agregar a la lista temporal
+                    if (prod.stock !== null && prod.stock < manualCantidad) {
+                      alert(`No hay stock suficiente para ${prod.nombre}. Disponible: ${prod.stock} unidades.`);
+                      return;
+                    }
+
+                    // Agregar
+                    setItemsConsumoManual(prev => {
+                      const existe = prev.find(item => item.producto.id === prod.id && item.observaciones === manualObservaciones);
+                      if (existe) {
+                        return prev.map(item =>
+                          item.producto.id === prod.id && item.observaciones === manualObservaciones
+                            ? { ...item, cantidad: item.cantidad + manualCantidad }
+                            : item
+                        );
+                      }
+                      return [...prev, { producto: prod, cantidad: manualCantidad, observaciones: manualObservaciones || undefined }];
+                    });
+
+                    // Limpiar campos temporales
+                    setManualCantidad(1);
+                    setManualObservaciones('');
+                  }}
+                  style={{
+                    background: '#222',
+                    border: '1px solid #333',
+                    color: 'white',
+                    padding: '8px',
+                    fontSize: '11px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    textTransform: 'uppercase',
+                    marginTop: '4px'
+                  }}
+                >
+                  Agregar a la Lista
+                </button>
+              </div>
+            </div>
+
+            {/* LISTA TEMPORAL DE CONSUMOS A AGREGAR */}
+            <div>
+              <h4 style={{ fontSize: '12px', textTransform: 'uppercase', fontWeight: 600, color: '#888', marginBottom: '10px' }}>
+                Resumen de Consumo a Cargar
+              </h4>
+              
+              {itemsConsumoManual.length === 0 ? (
+                <p style={{ fontSize: '12px', color: '#555', fontStyle: 'italic', textAlign: 'center', padding: '16px 0' }}>
+                  Aún no agregaste productos a la lista.
+                </p>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '24px' }}>
+                  {itemsConsumoManual.map((item, idx) => (
+                    <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '13px', borderBottom: '1px solid #222', paddingBottom: '6px' }}>
+                      <div>
+                        <b>{item.cantidad}x {item.producto.nombre}</b>
+                        {item.observaciones && <span style={{ display: 'block', fontSize: '11px', color: 'var(--accent-gold)', fontStyle: 'italic' }}>({item.observaciones})</span>}
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <span>${(item.producto.precio * item.cantidad).toLocaleString('es-AR')}</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setItemsConsumoManual(prev => prev.filter((_, i) => i !== idx));
+                          }}
+                          style={{ background: 'transparent', border: 'none', color: '#ff4d4d', cursor: 'pointer', fontSize: '11px' }}
+                        >
+                          Eliminar
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                  
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', fontWeight: 600, paddingTop: '10px', color: 'white' }}>
+                    <span>Total Consumo:</span>
+                    <span style={{ color: 'var(--accent-gold)' }}>
+                      ${itemsConsumoManual.reduce((sum, item) => sum + (item.producto.precio * item.cantidad), 0).toLocaleString('es-AR')}
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* CONTROL DE ENTREGA / ENVÍO A COCINA */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', borderTop: '1px solid #222', paddingTop: '16px', marginTop: '16px' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={manualEnviarACocina}
+                  onChange={(e) => setManualEnviarACocina(e.target.checked)}
+                  style={{ cursor: 'pointer' }}
+                />
+                <span>Enviar comanda a la Cocina (Estado: Pendiente)</span>
+              </label>
+              <span style={{ fontSize: '11px', color: '#666', marginTop: '-6px' }}>
+                * Si está desactivado, el pedido se cargará directamente a la mesa como ya entregado (estado: Servido).
+              </span>
+            </div>
+
+            {/* BOTONES DE CONFIRMACIÓN */}
+            <div style={{ display: 'flex', gap: '10px', marginTop: '24px' }}>
+              <button
+                type="button"
+                onClick={() => {
+                  setMostrarModalConsumoManual(false);
+                  setMesaConsumoManual(null);
+                  setItemsConsumoManual([]);
+                }}
+                style={{
+                  flex: 1,
+                  background: '#222',
+                  border: '1px solid #333',
+                  color: 'white',
+                  padding: '12px',
+                  cursor: 'pointer',
+                  textTransform: 'uppercase',
+                  fontSize: '12px',
+                  fontWeight: 600
+                }}
+              >
+                Cerrar
+              </button>
+              <button
+                type="button"
+                disabled={itemsConsumoManual.length === 0}
+                onClick={handleConfirmarConsumoManual}
+                style={{
+                  flex: 2,
+                  background: 'var(--accent-gold)',
+                  color: '#121212',
+                  border: 'none',
+                  padding: '12px',
+                  cursor: itemsConsumoManual.length === 0 ? 'not-allowed' : 'pointer',
+                  opacity: itemsConsumoManual.length === 0 ? 0.5 : 1,
+                  textTransform: 'uppercase',
+                  fontSize: '12px',
+                  fontWeight: 600
+                }}
+              >
+                Confirmar Consumo
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -6,6 +6,8 @@ export interface Producto {
   imagenUrl: string;
   categoria: string;
   esCafe?: boolean;
+  stock?: number | null;
+  stockMinimo?: number | null;
 }
 
 export const CATEGORIAS = [

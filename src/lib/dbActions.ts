@@ -11,6 +11,8 @@ export interface DbProduct {
   imagen_url: string | null;
   disponible: boolean;
   es_cafe: boolean;
+  stock: number | null;
+  stock_minimo: number | null;
   created_at?: string;
   categoria?: { nombre: string };
 }
@@ -155,6 +157,27 @@ export async function crearPedido(orderData: {
       .insert(detallesInsert);
 
     if (detallesError) throw detallesError;
+
+    // Descontar stock para cada producto si tiene stock definido (no es null)
+    try {
+      for (const item of orderData.items) {
+        const { data: prodData } = await supabase
+          .from('productos')
+          .select('stock')
+          .eq('id', item.productoId)
+          .single();
+        
+        if (prodData && prodData.stock !== null) {
+          const nuevoStock = Math.max(0, prodData.stock - item.cantidad);
+          await supabase
+            .from('productos')
+            .update({ stock: nuevoStock })
+            .eq('id', item.productoId);
+        }
+      }
+    } catch (stockErr) {
+      console.error('Error al descontar stock de los productos:', stockErr);
+    }
 
     // 3. Si es de mesa, actualizar el estado de la mesa a 'esperando_pedido' o 'ocupada'
     if (orderData.tipo === 'mesa' && orderData.mesa_id) {
@@ -348,5 +371,79 @@ export async function seedDatabase(): Promise<{ success: boolean; message: strin
   } catch (err: any) {
     console.error('Error seeding DB:', err);
     return { success: false, message: err.message || JSON.stringify(err) };
+  }
+}
+
+// 10. Crear un producto
+export async function crearProducto(producto: {
+  nombre: string;
+  descripcion?: string | null;
+  precio: number;
+  imagen_url?: string | null;
+  disponible: boolean;
+  es_cafe: boolean;
+  categoria_id: number | null;
+  stock?: number | null;
+  stock_minimo?: number | null;
+}) {
+  try {
+    const { data, error } = await supabase
+      .from('productos')
+      .insert(producto)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return { success: true, data };
+  } catch (err: any) {
+    console.error('Error creando producto:', err);
+    return { success: false, error: err.message };
+  }
+}
+
+// 11. Actualizar un producto
+export async function actualizarProducto(
+  id: number,
+  datos: {
+    nombre?: string;
+    descripcion?: string | null;
+    precio?: number;
+    imagen_url?: string | null;
+    disponible?: boolean;
+    es_cafe?: boolean;
+    categoria_id?: number | null;
+    stock?: number | null;
+    stock_minimo?: number | null;
+  }
+) {
+  try {
+    const { data, error } = await supabase
+      .from('productos')
+      .update(datos)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return { success: true, data };
+  } catch (err: any) {
+    console.error('Error actualizando producto:', err);
+    return { success: false, error: err.message };
+  }
+}
+
+// 12. Eliminar un producto
+export async function eliminarProducto(id: number) {
+  try {
+    const { error } = await supabase
+      .from('productos')
+      .delete()
+      .eq('id', id);
+
+    if (error) throw error;
+    return { success: true };
+  } catch (err: any) {
+    console.error('Error eliminando producto:', err);
+    return { success: false, error: err.message };
   }
 }

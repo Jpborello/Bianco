@@ -104,7 +104,9 @@ export default function MesaClientePage() {
             precio: Number(p.precio),
             imagenUrl: p.imagen_url || 'https://images.unsplash.com/photo-1578985545062-69928b1d9587?w=600&auto=format&fit=crop&q=80',
             categoria: p.categoria?.nombre || 'General',
-            esCafe: p.es_cafe
+            esCafe: p.es_cafe,
+            stock: p.stock,
+            stockMinimo: p.stock_minimo
           }));
           setProductos(mappedProds);
         } else {
@@ -226,6 +228,48 @@ export default function MesaClientePage() {
       };
     }
   }, [mesaDb?.id]);
+
+  // Efecto para escuchar cambios en los productos por Supabase Realtime (cambios de stock en vivo)
+  useEffect(() => {
+    const channelProds = supabase
+      .channel('mesa-realtime-productos')
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'productos'
+      }, () => {
+        // Recargar menú para reflejar los nuevos stocks
+        if (mesaNumero) {
+          async function recargarMenu() {
+            try {
+              const dbProducts = await getProductos();
+              if (dbProducts && dbProducts.length > 0) {
+                const mappedProds: Producto[] = dbProducts.map((p) => ({
+                  id: p.id,
+                  nombre: p.nombre,
+                  descripcion: p.descripcion || '',
+                  precio: Number(p.precio),
+                  imagenUrl: p.imagen_url || 'https://images.unsplash.com/photo-1578985545062-69928b1d9587?w=600&auto=format&fit=crop&q=80',
+                  categoria: p.categoria?.nombre || 'General',
+                  esCafe: p.es_cafe,
+                  stock: p.stock,
+                  stockMinimo: p.stock_minimo
+                }));
+                setProductos(mappedProds);
+              }
+            } catch (err) {
+              console.error('Error al recargar productos por realtime:', err);
+            }
+          }
+          recargarMenu();
+        }
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channelProds);
+    };
+  }, [mesaNumero]);
 
   // Completar el registro inicial del cliente
   const handleRegistroSubmit = async (e: React.FormEvent) => {
@@ -905,9 +949,23 @@ export default function MesaClientePage() {
                       <h3 className="product-card-title" style={{ fontSize: '15px', fontWeight: 600, color: 'var(--text-primary)' }}>{prod.nombre}</h3>
                       <span className="product-card-price" style={{ fontSize: '14px', fontWeight: 700, color: 'var(--accent-gold)' }}>${prod.precio.toLocaleString('es-AR')}</span>
                     </div>
-                    <p className="product-card-desc" style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.3, marginBottom: '14px', height: '48px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    <p className="product-card-desc" style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.3, marginBottom: '10px', height: '48px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {prod.descripcion}
                     </p>
+
+                    {prod.stock !== undefined && prod.stock !== null && (
+                      <div style={{ marginBottom: '10px' }}>
+                        {prod.stock <= 0 ? (
+                          <span style={{ fontSize: '10px', fontWeight: 600, color: '#dc2626', background: 'rgba(220, 38, 38, 0.1)', padding: '2px 6px', borderRadius: '4px' }}>
+                            Sin Stock
+                          </span>
+                        ) : prod.stock <= (prod.stockMinimo ?? 0) ? (
+                          <span style={{ fontSize: '10px', fontWeight: 600, color: '#d97706', background: 'rgba(217, 119, 6, 0.1)', padding: '2px 6px', borderRadius: '4px' }}>
+                            ¡Últimos {prod.stock} disponibles!
+                          </span>
+                        ) : null}
+                      </div>
+                    )}
                   </div>
 
                   <div className="product-card-actions" style={{ display: 'flex', gap: '6px' }}>
@@ -916,6 +974,7 @@ export default function MesaClientePage() {
                         setProductoConNotaId(prod.id);
                         setNotaTemporal('');
                       }}
+                      disabled={prod.stock !== undefined && prod.stock !== null && prod.stock <= 0}
                       className="product-card-button-notes"
                       style={{
                         flex: 1,
@@ -924,32 +983,34 @@ export default function MesaClientePage() {
                         borderRadius: '6px',
                         padding: '6px',
                         fontSize: '11px',
-                        cursor: 'pointer',
-                        color: 'var(--text-secondary)'
+                        cursor: (prod.stock !== undefined && prod.stock !== null && prod.stock <= 0) ? 'not-allowed' : 'pointer',
+                        color: 'var(--text-secondary)',
+                        opacity: (prod.stock !== undefined && prod.stock !== null && prod.stock <= 0) ? 0.5 : 1
                       }}
                     >
                       Notas
                     </button>
                     <button
                       onClick={() => agregarAlCarrito(prod)}
+                      disabled={prod.stock !== undefined && prod.stock !== null && prod.stock <= 0}
                       className="product-card-button-add"
                       style={{
                         flex: 2,
-                        background: 'var(--text-primary)',
-                        color: 'var(--bg-color)',
+                        background: (prod.stock !== undefined && prod.stock !== null && prod.stock <= 0) ? 'var(--border-color)' : 'var(--text-primary)',
+                        color: (prod.stock !== undefined && prod.stock !== null && prod.stock <= 0) ? 'var(--text-secondary)' : 'var(--bg-color)',
                         border: 'none',
                         borderRadius: '6px',
                         padding: '6px',
                         fontSize: '11px',
                         fontWeight: 500,
-                        cursor: 'pointer',
+                        cursor: (prod.stock !== undefined && prod.stock !== null && prod.stock <= 0) ? 'not-allowed' : 'pointer',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
                         gap: '4px'
                       }}
                     >
-                      Agregar
+                      {(prod.stock !== undefined && prod.stock !== null && prod.stock <= 0) ? 'Agotado' : 'Agregar'}
                     </button>
                   </div>
                 </div>

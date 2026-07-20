@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import Image from 'next/image';
 import { CATEGORIAS, PRODUCTOS_MOCK, Producto } from '../lib/mockData';
 import { getProductos, getCategorias, crearPedido } from '../lib/dbActions';
+import { supabase } from '../lib/supabase';
 import { ShoppingBag, Coffee, ArrowRight, Check, X, MapPin, Phone, User, Loader2, Sparkles } from 'lucide-react';
 
 export default function Home() {
@@ -25,7 +26,7 @@ export default function Home() {
   const [direccion, setDireccion] = useState('');
   const [enviandoPedido, setEnviandoPedido] = useState(false);
 
-  // Cargar datos desde Supabase
+  // Cargar datos desde Supabase e iniciar suscripción Realtime
   useEffect(() => {
     async function cargarDatos() {
       try {
@@ -40,7 +41,9 @@ export default function Home() {
             precio: Number(p.precio),
             imagenUrl: p.imagen_url || 'https://images.unsplash.com/photo-1578985545062-69928b1d9587?w=600&auto=format&fit=crop&q=80',
             categoria: p.categoria?.nombre || 'General',
-            esCafe: p.es_cafe
+            esCafe: p.es_cafe,
+            stock: p.stock,
+            stockMinimo: p.stock_minimo
           }));
           setProductos(mappedProds);
         } else {
@@ -60,7 +63,24 @@ export default function Home() {
         setCargando(false);
       }
     }
+    
     cargarDatos();
+
+    // Escuchar actualizaciones de productos (cambios de stock en tiempo real)
+    const channelProds = supabase
+      .channel('home-realtime-productos')
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'productos'
+      }, () => {
+        cargarDatos();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channelProds);
+    };
   }, []);
 
   const agregarAlCarrito = (producto: Producto, nota?: string) => {
@@ -357,9 +377,23 @@ export default function Home() {
                       <h3 className="product-card-title" style={{ fontSize: '17px', fontWeight: 600, fontFamily: 'var(--font-sans)', color: 'var(--text-primary)' }}>{prod.nombre}</h3>
                       <span className="product-card-price" style={{ fontSize: '15px', fontWeight: 700, color: 'var(--accent-gold)' }}>${prod.precio.toLocaleString('es-AR')}</span>
                     </div>
-                    <p className="product-card-desc" style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.4, marginBottom: '16px', height: '54px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    <p className="product-card-desc" style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.4, marginBottom: '12px', height: '54px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {prod.descripcion}
                     </p>
+
+                    {prod.stock !== undefined && prod.stock !== null && (
+                      <div style={{ marginBottom: '12px' }}>
+                        {prod.stock <= 0 ? (
+                          <span style={{ fontSize: '11px', fontWeight: 600, color: '#dc2626', background: 'rgba(220, 38, 38, 0.1)', padding: '4px 8px', borderRadius: '4px' }}>
+                            Sin Stock
+                          </span>
+                        ) : prod.stock <= (prod.stockMinimo ?? 0) ? (
+                          <span style={{ fontSize: '11px', fontWeight: 600, color: '#d97706', background: 'rgba(217, 119, 6, 0.1)', padding: '4px 8px', borderRadius: '4px' }}>
+                            ¡Últimos {prod.stock} disponibles!
+                          </span>
+                        ) : null}
+                      </div>
+                    )}
                   </div>
 
                   <div className="product-card-actions" style={{ display: 'flex', gap: '8px' }}>
@@ -368,6 +402,7 @@ export default function Home() {
                         setProductoConNotaId(prod.id);
                         setNotaTemporal('');
                       }}
+                      disabled={prod.stock !== undefined && prod.stock !== null && prod.stock <= 0}
                       className="product-card-button-notes"
                       style={{
                         flex: 1,
@@ -376,32 +411,34 @@ export default function Home() {
                         borderRadius: '8px',
                         padding: '8px',
                         fontSize: '12px',
-                        cursor: 'pointer',
-                        color: 'var(--text-secondary)'
+                        cursor: (prod.stock !== undefined && prod.stock !== null && prod.stock <= 0) ? 'not-allowed' : 'pointer',
+                        color: 'var(--text-secondary)',
+                        opacity: (prod.stock !== undefined && prod.stock !== null && prod.stock <= 0) ? 0.5 : 1
                       }}
                     >
                       Notas
                     </button>
                     <button
                       onClick={() => agregarAlCarrito(prod)}
+                      disabled={prod.stock !== undefined && prod.stock !== null && prod.stock <= 0}
                       className="product-card-button-add"
                       style={{
                         flex: 2,
-                        background: 'var(--text-primary)',
-                        color: 'var(--bg-color)',
+                        background: (prod.stock !== undefined && prod.stock !== null && prod.stock <= 0) ? 'var(--border-color)' : 'var(--text-primary)',
+                        color: (prod.stock !== undefined && prod.stock !== null && prod.stock <= 0) ? 'var(--text-secondary)' : 'var(--bg-color)',
                         border: 'none',
                         borderRadius: '8px',
                         padding: '8px',
                         fontSize: '12px',
                         fontWeight: 500,
-                        cursor: 'pointer',
+                        cursor: (prod.stock !== undefined && prod.stock !== null && prod.stock <= 0) ? 'not-allowed' : 'pointer',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
                         gap: '6px'
                       }}
                     >
-                      Agregar
+                      {(prod.stock !== undefined && prod.stock !== null && prod.stock <= 0) ? 'Agotado' : 'Agregar'}
                     </button>
                   </div>
                 </div>
