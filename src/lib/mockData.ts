@@ -1,3 +1,5 @@
+import { BRAND_CONFIG } from './brandConfig';
+
 export interface Producto {
   id: number;
   nombre: string;
@@ -20,7 +22,7 @@ export const CATEGORIAS = [
 export const PRODUCTOS_MOCK: Producto[] = [
   {
     id: 1,
-    nombre: "Bianco Foret",
+    nombre: `${BRAND_CONFIG.name} Foret`,
     descripcion: "Nuestra versión de Selva Negra con mousse de chocolate belga, bizcochuelo húmedo embebido en licor de cerezas y frosting de vainilla de Madagascar.",
     precio: 6500,
     imagenUrl: "https://images.unsplash.com/photo-1578985545062-69928b1d9587?w=600&auto=format&fit=crop&q=80",

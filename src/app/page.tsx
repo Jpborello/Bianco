@@ -6,6 +6,7 @@ import { CATEGORIAS, PRODUCTOS_MOCK, Producto } from '../lib/mockData';
 import { getProductos, getCategorias, crearPedido } from '../lib/dbActions';
 import { supabase } from '../lib/supabase';
 import { ShoppingBag, Coffee, ArrowRight, Check, X, MapPin, Phone, User, Loader2, Sparkles } from 'lucide-react';
+import { BRAND_CONFIG } from '../lib/brandConfig';
 
 export default function Home() {
   const [productos, setProductos] = useState<Producto[]>([]);
@@ -178,8 +179,8 @@ export default function Home() {
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <div style={{ position: 'relative', width: 44, height: 44, borderRadius: '50%', overflow: 'hidden', border: '1px solid var(--border-color)' }}>
             <Image 
-              src="https://images.unsplash.com/photo-1509440159596-0249088772ff?w=100&auto=format&fit=crop&q=80" 
-              alt="Bianco Logo" 
+              src={BRAND_CONFIG.logoUrl} 
+              alt={`${BRAND_CONFIG.name} Logo`} 
               fill
               sizes="44px"
               priority
@@ -187,8 +188,8 @@ export default function Home() {
             />
           </div>
           <div>
-            <h1 style={{ fontSize: '18px', fontWeight: 600, letterSpacing: '1px', textTransform: 'uppercase' }}>Bianco</h1>
-            <p style={{ fontSize: '10px', color: 'var(--text-secondary)', letterSpacing: '2px', textTransform: 'uppercase', marginTop: '-2px' }}>Pastelería de autor</p>
+            <h1 style={{ fontSize: '18px', fontWeight: 600, letterSpacing: '1px', textTransform: 'uppercase' }}>{BRAND_CONFIG.name}</h1>
+            <p style={{ fontSize: '10px', color: 'var(--text-secondary)', letterSpacing: '2px', textTransform: 'uppercase', marginTop: '-2px' }}>{BRAND_CONFIG.subtitle}</p>
           </div>
         </div>
 
@@ -722,7 +723,7 @@ export default function Home() {
                         }}
                       />
                     </div>
-                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Lo usaremos para coordinar la entrega y futuros sorteos exclusivos de Bianco.</span>
+                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Lo usaremos para coordinar la entrega y futuros sorteos exclusivos de {BRAND_CONFIG.name}.</span>
                   </div>
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>

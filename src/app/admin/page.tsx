@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Image from 'next/image';
 import { supabase } from '../../lib/supabase';
+import { BRAND_CONFIG } from '../../lib/brandConfig';
 import { 
   getMesas, 
   crearPedido, 
@@ -105,7 +106,7 @@ export default function AdminDashboard() {
   useEffect(() => {
     if (typeof window !== 'undefined') {
       setHostUrl(window.location.origin);
-      const savedRole = sessionStorage.getItem('bianco_admin_rol');
+      const savedRole = sessionStorage.getItem(`${BRAND_CONFIG.storagePrefix}_admin_rol`);
       if (savedRole === 'caja' || savedRole === 'dueno') {
         setRolActivo(savedRole as any);
       }
@@ -270,7 +271,7 @@ export default function AdminDashboard() {
     e.preventDefault();
     if (pinInput === '1234') {
       setRolActivo('dueno');
-      sessionStorage.setItem('bianco_admin_rol', 'dueno');
+      sessionStorage.setItem(`${BRAND_CONFIG.storagePrefix}_admin_rol`, 'dueno');
       setLoginError('');
       setPinInput('');
     } else {
@@ -281,7 +282,7 @@ export default function AdminDashboard() {
 
   // Salir de sesión del rol
   const handleLogout = () => {
-    sessionStorage.removeItem('bianco_admin_rol');
+    sessionStorage.removeItem(`${BRAND_CONFIG.storagePrefix}_admin_rol`);
     setRolActivo(null);
     setSolicitaPin(false);
   };
@@ -588,7 +589,7 @@ export default function AdminDashboard() {
             fontWeight: 600,
             display: 'block',
             marginBottom: '8px'
-          }}>BIANCO PASTELERÍA</span>
+          }}>{BRAND_CONFIG.fullName.toUpperCase()}</span>
           
           <h2 style={{ fontSize: '24px', fontWeight: 400, letterSpacing: '0.5px', marginBottom: '28px', textTransform: 'uppercase' }}>
             Control de Acceso
@@ -599,7 +600,7 @@ export default function AdminDashboard() {
               <button
                 onClick={() => {
                   setRolActivo('caja');
-                  sessionStorage.setItem('bianco_admin_rol', 'caja');
+                  sessionStorage.setItem(`${BRAND_CONFIG.storagePrefix}_admin_rol`, 'caja');
                 }}
                 style={{
                   background: '#222',
@@ -762,7 +763,7 @@ export default function AdminDashboard() {
             letterSpacing: '1px'
           }}>
             <Sparkles size={16} />
-            <span>BIANCO</span>
+            <span>{BRAND_CONFIG.name.toUpperCase()}</span>
           </div>
           <div>
             <h1 style={{ fontSize: '17px', fontWeight: 500, letterSpacing: '0.5px', textTransform: 'uppercase' }}>
@@ -1465,8 +1466,8 @@ export default function AdminDashboard() {
                       pageBreakInside: 'avoid'
                     }}
                   >
-                    <span style={{ fontSize: '11px', fontWeight: 600, letterSpacing: '2px', textTransform: 'uppercase', color: '#c5a880', margin: 0 }}>BIANCO</span>
-                    <p style={{ fontSize: '8px', textTransform: 'uppercase', letterSpacing: '1px', color: '#656565', marginTop: '-2px', marginBottom: '16px' }}>Pastelería de Autor</p>
+                    <span style={{ fontSize: '11px', fontWeight: 600, letterSpacing: '2px', textTransform: 'uppercase', color: '#c5a880', margin: 0 }}>{BRAND_CONFIG.name.toUpperCase()}</span>
+                    <p style={{ fontSize: '8px', textTransform: 'uppercase', letterSpacing: '1px', color: '#656565', marginTop: '-2px', marginBottom: '16px' }}>{BRAND_CONFIG.subtitle}</p>
                     
                     <div style={{
                       width: '56px',
@@ -1855,7 +1856,7 @@ export default function AdminDashboard() {
                   Inicialización del Sistema
                 </h4>
                 <p style={{ fontSize: '12px', color: '#666', marginBottom: '16px', lineHeight: '1.4' }}>
-                  Si recién instalás la base de datos, podés recargar los productos iniciales de Bianco (Pastelería de Autor, Viennoiserie, Cafés, Salados).
+                  Si recién instalás la base de datos, podés recargar los productos iniciales de {BRAND_CONFIG.name} ({BRAND_CONFIG.subtitle}, Viennoiserie, Cafés, Salados).
                 </p>
                 <button
                   onClick={handleSeed}
@@ -1918,9 +1919,9 @@ export default function AdminDashboard() {
               color: '#000'
             }}>
               <div style={{ textAlign: 'center', marginBottom: '16px' }}>
-                <h3 style={{ fontSize: '18px', fontWeight: 'bold', margin: 0 }}>BIANCO</h3>
-                <p style={{ fontSize: '10px', margin: '2px 0 0', textTransform: 'uppercase', letterSpacing: '1px', color: '#555' }}>Pastelería de Autor</p>
-                <p style={{ fontSize: '10px', margin: '1px 0 0', color: '#555' }}>Mendoza 1420, Bianco Pastelería</p>
+                <h3 style={{ fontSize: '18px', fontWeight: 'bold', margin: 0 }}>{BRAND_CONFIG.ticketHeader}</h3>
+                <p style={{ fontSize: '10px', margin: '2px 0 0', textTransform: 'uppercase', letterSpacing: '1px', color: '#555' }}>{BRAND_CONFIG.subtitle}</p>
+                <p style={{ fontSize: '10px', margin: '1px 0 0', color: '#555' }}>{BRAND_CONFIG.address}</p>
                 <p style={{ margin: '8px 0 0', borderTop: '1px dashed #000', borderBottom: '1px dashed #000', padding: '4px 0', fontWeight: 'bold' }}>
                   DETALLE DE CONSUMOS
                 </p>
@@ -1963,7 +1964,7 @@ export default function AdminDashboard() {
               </div>
 
               <div style={{ textAlign: 'center', marginTop: '24px', fontSize: '11px', color: '#555' }}>
-                <p>¡Gracias por elegir Bianco!</p>
+                <p>{BRAND_CONFIG.ticketFooter}</p>
                 <p style={{ marginTop: '4px' }}>Documento no válido como factura</p>
               </div>
             </div>

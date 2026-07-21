@@ -6,6 +6,7 @@ import Image from 'next/image';
 import { Producto, PRODUCTOS_MOCK, CATEGORIAS } from '../../../lib/mockData';
 import { getProductos, getCategorias, getMesas, crearPedido, crearSolicitud, ocuparMesa, DbTable, DbOrder } from '../../../lib/dbActions';
 import { supabase } from '../../../lib/supabase';
+import { BRAND_CONFIG } from '../../../lib/brandConfig';
 import { 
   Coffee, 
   ShoppingBag, 
@@ -56,8 +57,8 @@ export default function MesaClientePage() {
     let localNombre = '';
     let localTelefono = '';
     try {
-      localNombre = localStorage.getItem('bianco_nombre') || '';
-      localTelefono = localStorage.getItem('bianco_telefono') || '';
+      localNombre = localStorage.getItem(`${BRAND_CONFIG.storagePrefix}_nombre`) || '';
+      localTelefono = localStorage.getItem(`${BRAND_CONFIG.storagePrefix}_telefono`) || '';
       
       if (localNombre && localTelefono) {
         setNombreCliente(localNombre);
@@ -214,8 +215,8 @@ export default function MesaClientePage() {
             setCuentaSolicitada(false);
             setMozoLlamado(false);
             try {
-              localStorage.removeItem('bianco_nombre');
-              localStorage.removeItem('bianco_telefono');
+              localStorage.removeItem(`${BRAND_CONFIG.storagePrefix}_nombre`);
+              localStorage.removeItem(`${BRAND_CONFIG.storagePrefix}_telefono`);
             } catch (err) {
               console.warn('Error al limpiar localStorage de mesa:', err);
             }
@@ -279,8 +280,8 @@ export default function MesaClientePage() {
       return;
     }
     try {
-      localStorage.setItem('bianco_nombre', nombreCliente);
-      localStorage.setItem('bianco_telefono', telefonoCliente);
+      localStorage.setItem(`${BRAND_CONFIG.storagePrefix}_nombre`, nombreCliente);
+      localStorage.setItem(`${BRAND_CONFIG.storagePrefix}_telefono`, telefonoCliente);
     } catch (err) {
       console.warn('LocalStorage no disponible al guardar:', err);
     }
@@ -451,7 +452,7 @@ export default function MesaClientePage() {
             fontWeight: 600,
             display: 'block',
             marginBottom: '8px'
-          }}>Bianco Pastelería</span>
+          }}>{BRAND_CONFIG.fullName}</span>
           
           <h2 style={{ fontSize: '28px', fontWeight: 400, marginBottom: '6px' }}>Mesa {mesaNumero}</h2>
           <p style={{ fontSize: '14px', color: 'var(--text-secondary)', marginBottom: '24px' }}>
@@ -616,8 +617,8 @@ export default function MesaClientePage() {
           <button 
             onClick={() => {
               if (confirm('¿Querés cambiar de nombre o cerrar sesión de la mesa?')) {
-                localStorage.removeItem('bianco_nombre');
-                localStorage.removeItem('bianco_telefono');
+                localStorage.removeItem(`${BRAND_CONFIG.storagePrefix}_nombre`);
+                localStorage.removeItem(`${BRAND_CONFIG.storagePrefix}_telefono`);
                 setRegistroCompletado(false);
               }
             }}
