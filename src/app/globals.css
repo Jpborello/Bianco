@@ -65,6 +65,20 @@ h1, h2, h3, h4, .font-serif {
 
 a, button, input, select, textarea {
   transition: var(--transition-smooth);
+  -webkit-tap-highlight-color: transparent;
+}
+
+button:active, a.btn-active:active {
+  transform: scale(0.97);
+}
+
+/* Ocultar barra de desplazamiento sin perder funcionalidad */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }
 
 .product-grid {
@@ -77,24 +91,79 @@ a, button, input, select, textarea {
   height: 200px;
 }
 
+/* Animaciones para Bottom Sheets y modales en mobile */
+@keyframes slideUpDrawer {
+  from {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes pulseGlow {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(212, 175, 55, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 10px rgba(212, 175, 55, 0);
+  }
+}
+
+.animate-slide-up {
+  animation: slideUpDrawer 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-pulse-glow {
+  animation: pulseGlow 2s infinite;
+}
+
+/* Mobile Responsiveness Rules */
 @media (max-width: 640px) {
   .product-grid {
-    grid-template-columns: repeat(2, 1fr) !important;
-    gap: 12px !important;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)) !important;
+    gap: 10px !important;
   }
   .product-card {
-    border-radius: 14px !important;
+    border-radius: 16px !important;
   }
   .product-card-image-container {
-    height: 125px !important;
+    height: 120px !important;
   }
   .product-card-info {
-    padding: 12px !important;
+    padding: 10px !important;
   }
   .product-card-title {
     font-size: 14px !important;
+    line-height: 1.25 !important;
   }
   .product-card-price {
     font-size: 13px !important;
   }
+  .product-card-desc {
+    font-size: 11px !important;
+    height: 34px !important;
+    -webkit-line-clamp: 2 !important;
+    display: -webkit-box !important;
+    -webkit-box-orient: vertical !important;
+    overflow: hidden !important;
+    margin-bottom: 8px !important;
+  }
+  
+  /* Modal de Carrito / Checkout en celulares como Bottom Sheet */
+  .mobile-drawer-modal {
+    position: fixed !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    top: auto !important;
+    max-height: 90vh !important;
+    border-radius: 24px 24px 0 0 !important;
+    border-bottom: none !important;
+    animation: slideUpDrawer 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards !important;
+    padding-bottom: calc(16px + env(safe-area-inset-bottom)) !important;
+  }
 }
+
