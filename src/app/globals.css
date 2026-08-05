@@ -1,32 +1,33 @@
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&display=swap');
 
 :root {
-  /* Paleta Elegante Premium */
-  --bg-color: #faf9f6; /* Crema suave / Blanco roto */
-  --card-bg: #ffffff;
-  --text-primary: #121212; /* Negro suave mate */
-  --text-secondary: #656565;
-  --accent-gold: #c5a880; /* Dorado sutil de autor */
-  --accent-gold-hover: #b4966e;
-  --accent-light-gold: #f4efe6;
-  --border-color: #eae6df;
+  /* Paleta Gastronómica Peruana Premium */
+  --bg-color: #FAF6F0; /* Crema artesanal cálido */
+  --card-bg: #FFFFFF;
+  --text-primary: #231E1B; /* Charcoal profundo */
+  --text-secondary: #655E57;
+  
+  --accent-gold: #D4AF37; /* Dorado Inca */
+  --accent-gold-hover: #B89628;
+  --accent-light-gold: #FDF6E3;
+  --accent-red: #9E2A2B; /* Rojo Terracota Peruano */
+  --border-color: #EAE2D8;
   
   --font-sans: 'Outfit', sans-serif;
   --font-serif: 'Playfair Display', serif;
   
   --transition-smooth: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
-  --shadow-soft: 0 4px 20px rgba(0, 0, 0, 0.03);
-  --shadow-medium: 0 8px 30px rgba(197, 168, 128, 0.08);
+  --shadow-soft: 0 4px 20px rgba(35, 30, 27, 0.04);
+  --shadow-medium: 0 8px 30px rgba(212, 175, 55, 0.12);
 }
 
-/* Modo oscuro opcional o para dashboards */
 .dark-theme {
-  --bg-color: #0d0d0d;
-  --card-bg: #161616;
-  --text-primary: #f5f5f5;
-  --text-secondary: #a0a0a0;
-  --border-color: #262626;
-  --shadow-soft: 0 4px 20px rgba(0, 0, 0, 0.3);
+  --bg-color: #1A1614;
+  --card-bg: #241F1C;
+  --text-primary: #FAF6F0;
+  --text-secondary: #B3AAA2;
+  --border-color: #38302B;
+  --shadow-soft: 0 4px 20px rgba(0, 0, 0, 0.4);
 }
 
 * {
@@ -49,26 +50,23 @@ h1, h2, h3, h4, .font-serif {
   font-family: var(--font-serif);
 }
 
-/* Clases de utilidad sutiles */
 .glass {
-  background: rgba(255, 255, 255, 0.75);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.4);
+  background: rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.5);
 }
 
 .gold-gradient-text {
-  background: linear-gradient(135deg, #121212 30%, #c5a880 100%);
+  background: linear-gradient(135deg, var(--text-primary) 30%, var(--accent-gold) 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }
 
-/* Transición suave para todos los interactivos */
 a, button, input, select, textarea {
   transition: var(--transition-smooth);
 }
 
-/* Responsive Product Grid & Card Adjustments */
 .product-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
@@ -76,7 +74,7 @@ a, button, input, select, textarea {
 }
 
 .product-card-image-container {
-  height: 180px;
+  height: 200px;
 }
 
 @media (max-width: 640px) {
@@ -85,10 +83,10 @@ a, button, input, select, textarea {
     gap: 12px !important;
   }
   .product-card {
-    border-radius: 12px !important;
+    border-radius: 14px !important;
   }
   .product-card-image-container {
-    height: 110px !important;
+    height: 125px !important;
   }
   .product-card-info {
     padding: 12px !important;
@@ -99,24 +97,4 @@ a, button, input, select, textarea {
   .product-card-price {
     font-size: 13px !important;
   }
-  .product-card-desc {
-    display: none !important;
-  }
-  .product-card-actions {
-    gap: 4px !important;
-  }
-  .product-card-button-notes {
-    font-size: 10px !important;
-    padding: 6px 4px !important;
-  }
-  .product-card-button-add {
-    font-size: 10px !important;
-    padding: 6px 4px !important;
-  }
-}
-
-/* Hide scrollbars globally for scrollable nav bars */
-.admin-nav-scroll::-webkit-scrollbar,
-nav::-webkit-scrollbar {
-  display: none !important;
 }

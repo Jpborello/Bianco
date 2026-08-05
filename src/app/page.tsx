@@ -260,14 +260,14 @@ export default function Home() {
           gap: '6px',
           marginBottom: '12px'
         }}>
-          <Sparkles size={12} /> Pedidos a Domicilio
+          <Sparkles size={12} /> Menú & Pedidos a Domicilio
         </span>
-        <h2 style={{ fontSize: '32px', fontWeight: 400, lineHeight: 1.2, marginBottom: '16px' }} className="gold-gradient-text">
-          Diseño en pastelería,<br />
-          armonía en sabores.
+        <h2 style={{ fontSize: '34px', fontWeight: 700, lineHeight: 1.2, marginBottom: '16px' }} className="gold-gradient-text">
+          Auténtica Gastronomía Peruana,<br />
+          armonía y sazón tradicional.
         </h2>
-        <p style={{ fontSize: '14px', color: 'var(--text-secondary)', maxWidth: '480px', margin: '0 auto 20px', lineHeight: 1.5 }}>
-          Explorá nuestra exclusiva selección de pastelería fina de autor. Hacé tu pedido a domicilio y disfrutalo donde quieras.
+        <p style={{ fontSize: '14px', color: 'var(--text-secondary)', maxWidth: '520px', margin: '0 auto 20px', lineHeight: 1.5 }}>
+          Disfrutá del mejor Ceviche, Lomo Saltado, Causa Limeña, Ají de Gallina y Pisco Sour. Hacé tu pedido a domicilio o para retirar por el local.
         </p>
       </section>
 
