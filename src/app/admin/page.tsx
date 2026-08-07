@@ -21,6 +21,12 @@ import {
   eliminarProducto,
   getCategorias,
   ocuparMesa,
+  crearCategoria,
+  actualizarCategoria,
+  eliminarCategoria,
+  subirImagenProducto,
+  crearMesa,
+  eliminarMesa,
   DbProduct,
   DbCategory
 } from '../../lib/dbActions';
@@ -80,6 +86,16 @@ export default function AdminDashboard() {
   const [formStockMinimo, setFormStockMinimo] = useState('2');
   const [formEsCafe, setFormEsCafe] = useState(false);
   const [formDisponible, setFormDisponible] = useState(true);
+
+  // Estados de Gestión de Categorías (CRUD)
+  const [nuevaCategoriaNombre, setNuevaCategoriaNombre] = useState('');
+  const [guardandoCategoria, setGuardandoCategoria] = useState(false);
+  const [categoriaEditandoId, setCategoriaEditandoId] = useState<number | null>(null);
+  const [categoriaEditandoNombre, setCategoriaEditandoNombre] = useState('');
+
+  // Subida de imagen de producto
+  const [subiendoImagen, setSubiendoImagen] = useState(false);
+  const [errorSubidaImagen, setErrorSubidaImagen] = useState('');
 
   // Estados para el Consumo Manual desde Caja
   const [mostrarModalConsumoManual, setMostrarModalConsumoManual] = useState(false);
@@ -334,6 +350,93 @@ export default function AdminDashboard() {
       }
     } catch (err: any) {
       alert('Error: ' + err.message);
+    }
+  };
+
+  // Agregar la siguiente mesa disponible (numero mas alto + 1)
+  const handleAgregarMesa = async () => {
+    const siguienteNumero = mesas.length > 0 ? Math.max(...mesas.map(m => m.numero)) + 1 : 1;
+    const res = await crearMesa(siguienteNumero);
+    if (res.success) {
+      cargarDatosCompletos();
+    } else {
+      alert('Error al agregar la mesa: ' + res.error);
+    }
+  };
+
+  // Eliminar una mesa (solo si esta libre, para no perder una sesion en curso)
+  const handleEliminarMesa = async (mesa: DbTable) => {
+    if (mesa.estado !== 'libre') {
+      alert('Esta mesa está en uso. Liberala primero desde Monitoreo de Mesas antes de eliminarla.');
+      return;
+    }
+    if (!confirm(`¿Eliminar la Mesa ${mesa.numero}? Se borrará también su código QR.`)) return;
+
+    const res = await eliminarMesa(mesa.id);
+    if (res.success) {
+      cargarDatosCompletos();
+    } else {
+      alert('Error al eliminar la mesa: ' + res.error);
+    }
+  };
+
+  // Manejar la selección de un archivo de imagen para el producto
+  const handleSeleccionarImagen = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setErrorSubidaImagen('');
+    setSubiendoImagen(true);
+    const res = await subirImagenProducto(file);
+    setSubiendoImagen(false);
+
+    if (res.success && res.url) {
+      setFormImagenUrl(res.url);
+    } else {
+      setErrorSubidaImagen(res.error || 'No se pudo subir la imagen.');
+    }
+    // Permitir volver a elegir el mismo archivo si hace falta
+    e.target.value = '';
+  };
+
+  // Crear una nueva categoría de menú
+  const handleCrearCategoria = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!nuevaCategoriaNombre.trim()) return;
+
+    setGuardandoCategoria(true);
+    const res = await crearCategoria(nuevaCategoriaNombre);
+    setGuardandoCategoria(false);
+
+    if (res.success) {
+      setNuevaCategoriaNombre('');
+      cargarDatosCompletos();
+    } else {
+      alert('Error al crear la categoría: ' + res.error);
+    }
+  };
+
+  // Guardar el nombre editado de una categoría
+  const handleGuardarCategoriaEditada = async (id: number) => {
+    if (!categoriaEditandoNombre.trim()) return;
+    const res = await actualizarCategoria(id, categoriaEditandoNombre);
+    if (res.success) {
+      setCategoriaEditandoId(null);
+      setCategoriaEditandoNombre('');
+      cargarDatosCompletos();
+    } else {
+      alert('Error al renombrar la categoría: ' + res.error);
+    }
+  };
+
+  // Eliminar una categoría (bloqueado si tiene productos asociados)
+  const handleEliminarCategoria = async (cat: DbCategory) => {
+    if (!confirm(`¿Eliminar la categoría "${cat.nombre}"?`)) return;
+    const res = await eliminarCategoria(cat.id);
+    if (res.success) {
+      cargarDatosCompletos();
+    } else {
+      alert(res.error);
     }
   };
 
@@ -999,9 +1102,9 @@ export default function AdminDashboard() {
                                 background: 'var(--accent-gold)',
                                 border: 'none',
                                 color: '#121212',
-                                padding: '4px 8px',
+                                padding: '8px 14px',
                                 borderRadius: '0px',
-                                fontSize: '10px',
+                                fontSize: '11px',
                                 fontWeight: 'bold',
                                 cursor: 'pointer',
                                 textTransform: 'uppercase'
@@ -1034,9 +1137,9 @@ export default function AdminDashboard() {
                                 background: '#2b9348',
                                 border: 'none',
                                 color: 'white',
-                                padding: '4px 8px',
+                                padding: '8px 14px',
                                 borderRadius: '0px',
-                                fontSize: '10px',
+                                fontSize: '11px',
                                 fontWeight: 'bold',
                                 cursor: 'pointer',
                                 textTransform: 'uppercase'
@@ -1410,31 +1513,58 @@ export default function AdminDashboard() {
               <div>
                 <h2 style={{ fontSize: '18px', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Tarjetas de Códigos QR para las Mesas</h2>
                 <p style={{ fontSize: '12px', color: '#a0a0a0', marginTop: '4px' }}>
-                  Hojas listas para imprimir. Cada una contiene el código QR enlazado a la dirección `/mesa/[id]`.
+                  Hojas listas para imprimir. Una tarjeta por cada mesa cargada ({mesas.length} en total). Cada una contiene el código QR enlazado a la dirección `/mesa/[id]`.
                 </p>
               </div>
-              <button
-                onClick={handlePrint}
-                style={{
-                  background: 'var(--accent-gold)',
-                  color: '#121212',
-                  border: 'none',
-                  borderRadius: '0px',
-                  padding: '12px 24px',
-                  fontSize: '13px',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.5px'
-                }}
-              >
-                <Printer size={14} />
-                <span>Imprimir Tarjetas QR</span>
-              </button>
+              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                <button
+                  onClick={handleAgregarMesa}
+                  style={{
+                    background: '#222',
+                    border: '1px solid #444',
+                    color: 'white',
+                    borderRadius: '0px',
+                    padding: '12px 20px',
+                    fontSize: '13px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.5px'
+                  }}
+                >
+                  + Agregar Mesa
+                </button>
+                <button
+                  onClick={handlePrint}
+                  style={{
+                    background: 'var(--accent-gold)',
+                    color: '#121212',
+                    border: 'none',
+                    borderRadius: '0px',
+                    padding: '12px 24px',
+                    fontSize: '13px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.5px'
+                  }}
+                >
+                  <Printer size={14} />
+                  <span>Imprimir Tarjetas QR</span>
+                </button>
+              </div>
             </div>
+
+            {mesas.length === 0 && (
+              <div style={{ textAlign: 'center', padding: '60px', border: '1px dashed #333', borderRadius: '0px', color: '#a0a0a0' }} className="no-print">
+                <Database size={32} style={{ marginBottom: '12px', color: '#555' }} />
+                <p>Todavía no hay mesas cargadas.</p>
+                <p style={{ fontSize: '13px', marginTop: '6px' }}>Usá &quot;+ Agregar Mesa&quot; arriba, o inicializá 10 mesas desde la pestaña Inventario.</p>
+              </div>
+            )}
 
             <div style={{
               display: 'grid',
@@ -1442,8 +1572,8 @@ export default function AdminDashboard() {
               gap: '24px',
               marginTop: '12px'
             }} className="print-area">
-              {[...Array(10)].map((_, i) => {
-                const numero = i + 1;
+              {mesas.map((mesa) => {
+                const numero = mesa.numero;
                 const targetUrl = `${hostUrl}/mesa/${numero}`;
                 const qrImgSrc = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(targetUrl)}&color=121212`;
 
@@ -1511,6 +1641,24 @@ export default function AdminDashboard() {
                     <p style={{ fontSize: '9px', color: '#656565', lineHeight: 1.3, maxWidth: '200px', margin: '0 auto' }}>
                       Mirá la carta, realizá tu pedido, agregá agua o llamá al mozo desde tu celular.
                     </p>
+
+                    <button
+                      onClick={() => handleEliminarMesa(mesa)}
+                      className="no-print"
+                      style={{
+                        marginTop: '16px',
+                        background: 'transparent',
+                        border: '1px solid #eae6df',
+                        color: '#a33',
+                        padding: '6px 12px',
+                        fontSize: '10px',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        textTransform: 'uppercase'
+                      }}
+                    >
+                      Eliminar Mesa
+                    </button>
                   </div>
                 );
               })}
@@ -1706,6 +1854,7 @@ export default function AdminDashboard() {
                   setFormStockMinimo('2');
                   setFormEsCafe(false);
                   setFormDisponible(true);
+                  setErrorSubidaImagen('');
                   setMostrarFormProducto(true);
                 }}
                 style={{
@@ -1725,6 +1874,116 @@ export default function AdminDashboard() {
               >
                 <span>+ Agregar Producto</span>
               </button>
+            </div>
+
+            {/* GESTIÓN DE CATEGORÍAS */}
+            <div style={{ background: '#161616', border: '1px solid #222', borderRadius: '0px', padding: '20px 24px' }}>
+              <h3 style={{ fontSize: '13px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--accent-gold)', marginBottom: '14px' }}>
+                Categorías del Menú
+              </h3>
+
+              {categoriasList.length === 0 ? (
+                <p style={{ fontSize: '12px', color: '#666', fontStyle: 'italic', marginBottom: '14px' }}>
+                  Todavía no hay categorías cargadas.
+                </p>
+              ) : (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '16px' }}>
+                  {categoriasList.map((cat) => (
+                    <div
+                      key={cat.id}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        background: '#0d0d0d',
+                        border: '1px solid #333',
+                        padding: '6px 6px 6px 12px',
+                        fontSize: '12px'
+                      }}
+                    >
+                      {categoriaEditandoId === cat.id ? (
+                        <>
+                          <input
+                            type="text"
+                            autoFocus
+                            value={categoriaEditandoNombre}
+                            onChange={(e) => setCategoriaEditandoNombre(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') handleGuardarCategoriaEditada(cat.id);
+                              if (e.key === 'Escape') setCategoriaEditandoId(null);
+                            }}
+                            style={{ background: '#161616', border: '1px solid #444', color: 'white', padding: '4px 6px', fontSize: '12px', width: '140px' }}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleGuardarCategoriaEditada(cat.id)}
+                            style={{ background: 'var(--accent-gold)', border: 'none', color: '#121212', padding: '4px 8px', fontSize: '11px', fontWeight: 600, cursor: 'pointer' }}
+                          >
+                            Guardar
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setCategoriaEditandoId(null)}
+                            style={{ background: 'transparent', border: 'none', color: '#888', padding: '4px 6px', fontSize: '11px', cursor: 'pointer' }}
+                          >
+                            Cancelar
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <span>{cat.nombre}</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCategoriaEditandoId(cat.id);
+                              setCategoriaEditandoNombre(cat.nombre);
+                            }}
+                            title="Renombrar"
+                            style={{ background: 'transparent', border: 'none', color: '#a0a0a0', padding: '4px 6px', fontSize: '11px', cursor: 'pointer' }}
+                          >
+                            Editar
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleEliminarCategoria(cat)}
+                            title="Eliminar"
+                            style={{ background: 'transparent', border: 'none', color: '#ff4d4d', padding: '4px 6px', fontSize: '11px', cursor: 'pointer' }}
+                          >
+                            Eliminar
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <form onSubmit={handleCrearCategoria} style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                <input
+                  type="text"
+                  value={nuevaCategoriaNombre}
+                  onChange={(e) => setNuevaCategoriaNombre(e.target.value)}
+                  placeholder="Ej: Bebidas Sin Alcohol"
+                  style={{ background: '#0d0d0d', border: '1px solid #333', color: 'white', padding: '10px 12px', fontSize: '13px', flex: 1, minWidth: '200px' }}
+                />
+                <button
+                  type="submit"
+                  disabled={guardandoCategoria || !nuevaCategoriaNombre.trim()}
+                  style={{
+                    background: 'var(--accent-gold)',
+                    color: '#121212',
+                    border: 'none',
+                    padding: '10px 18px',
+                    fontWeight: 600,
+                    fontSize: '12px',
+                    cursor: guardandoCategoria || !nuevaCategoriaNombre.trim() ? 'not-allowed' : 'pointer',
+                    opacity: guardandoCategoria || !nuevaCategoriaNombre.trim() ? 0.5 : 1,
+                    textTransform: 'uppercase'
+                  }}
+                >
+                  {guardandoCategoria ? 'Guardando...' : '+ Nueva Categoría'}
+                </button>
+              </form>
             </div>
 
             {/* LISTADO DE PRODUCTOS */}
@@ -1802,15 +2061,16 @@ export default function AdminDashboard() {
                                   setFormStockMinimo((prod.stock_minimo ?? 2).toString());
                                   setFormEsCafe(prod.es_cafe);
                                   setFormDisponible(prod.disponible);
+                                  setErrorSubidaImagen('');
                                   setMostrarFormProducto(true);
                                 }}
                                 style={{
                                   background: 'transparent',
                                   border: '1px solid #444',
                                   color: '#ccc',
-                                  padding: '5px 10px',
+                                  padding: '8px 14px',
                                   cursor: 'pointer',
-                                  fontSize: '11px',
+                                  fontSize: '12px',
                                   textTransform: 'uppercase'
                                 }}
                               >
@@ -1831,9 +2091,9 @@ export default function AdminDashboard() {
                                   background: 'transparent',
                                   border: '1px solid #ff4d4d',
                                   color: '#ff4d4d',
-                                  padding: '5px 10px',
+                                  padding: '8px 14px',
                                   cursor: 'pointer',
-                                  fontSize: '11px',
+                                  fontSize: '12px',
                                   textTransform: 'uppercase'
                                 }}
                               >
@@ -2068,7 +2328,7 @@ export default function AdminDashboard() {
                 />
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+              <div className="admin-form-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                   <label style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase' }}>Precio ($) *</label>
                   <input
@@ -2094,18 +2354,53 @@ export default function AdminDashboard() {
                 </div>
               </div>
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                <label style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase' }}>Imagen URL (Unsplash o Link)</label>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <label style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase' }}>Foto del Producto</label>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                  {formImagenUrl && (
+                    <div style={{ position: 'relative', width: '56px', height: '56px', background: '#0d0d0d', border: '1px solid #333', flexShrink: 0 }}>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={formImagenUrl} alt="Vista previa" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    </div>
+                  )}
+
+                  <label style={{
+                    background: '#222',
+                    border: '1px solid #444',
+                    color: 'white',
+                    padding: '10px 16px',
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    cursor: subiendoImagen ? 'not-allowed' : 'pointer',
+                    opacity: subiendoImagen ? 0.6 : 1,
+                    textTransform: 'uppercase'
+                  }}>
+                    {subiendoImagen ? 'Subiendo...' : 'Elegir foto desde el celular / PC'}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleSeleccionarImagen}
+                      disabled={subiendoImagen}
+                      style={{ display: 'none' }}
+                    />
+                  </label>
+                </div>
+
+                {errorSubidaImagen && (
+                  <p style={{ fontSize: '11px', color: '#ff4d4d' }}>{errorSubidaImagen}</p>
+                )}
+
                 <input
                   type="text"
                   value={formImagenUrl}
                   onChange={(e) => setFormImagenUrl(e.target.value)}
-                  placeholder="Dejar vacío para usar predeterminada"
+                  placeholder="O pegá una URL de imagen (opcional)"
                   style={{ background: '#0d0d0d', border: '1px solid #333', color: 'white', padding: '10px', fontSize: '13px' }}
                 />
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+              <div className="admin-form-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                   <label style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase' }}>Stock (Vacío = Ilimitado)</label>
                   <input
@@ -2486,6 +2781,16 @@ export default function AdminDashboard() {
           .admin-header-controls > div {
             padding: 8px !important;
             justify-content: center !important;
+          }
+        }
+
+        /* Los formularios de producto y consumo manual tienen campos en
+           2 columnas (Precio/Categoria, Stock/Minimo) que quedan muy
+           angostos y dificiles de tocar en un celular. Se apilan en 1
+           sola columna por debajo de 480px. */
+        @media (max-width: 480px) {
+          .admin-form-2col {
+            grid-template-columns: 1fr !important;
           }
         }
         

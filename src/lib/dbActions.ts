@@ -158,21 +158,20 @@ export async function crearPedido(orderData: {
 
     if (detallesError) throw detallesError;
 
-    // Descontar stock para cada producto si tiene stock definido (no es null)
+    // Descontar stock de forma atomica (funcion en la base de datos).
+    // Antes esto se hacia con un SELECT + resta en JS + UPDATE, lo cual
+    // permite que dos pedidos simultaneos del mismo producto lean el
+    // mismo stock inicial y se pisen entre si (sobreventa). La funcion
+    // descontar_stock_producto hace la resta en una sola operacion
+    // atomica del lado de Postgres. Ver fix_stock_atomico.sql.
     try {
       for (const item of orderData.items) {
-        const { data: prodData } = await supabase
-          .from('productos')
-          .select('stock')
-          .eq('id', item.productoId)
-          .single();
-        
-        if (prodData && prodData.stock !== null) {
-          const nuevoStock = Math.max(0, prodData.stock - item.cantidad);
-          await supabase
-            .from('productos')
-            .update({ stock: nuevoStock })
-            .eq('id', item.productoId);
+        const { error: stockRpcError } = await supabase.rpc('descontar_stock_producto', {
+          p_producto_id: item.productoId,
+          p_cantidad: item.cantidad
+        });
+        if (stockRpcError) {
+          console.error('Error al descontar stock (RPC) del producto', item.productoId, stockRpcError);
         }
       }
     } catch (stockErr) {
@@ -287,6 +286,37 @@ export async function ocuparMesa(mesaId: number, nombre: string, telefono: strin
   } catch (err) {
     console.error('Error occupying table:', err);
     return false;
+  }
+}
+
+// 7c. Crear una mesa nueva (usa el siguiente número disponible si no se indica)
+export async function crearMesa(numero: number): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { error } = await supabase
+      .from('mesas')
+      .insert({ numero, estado: 'libre' });
+
+    if (error) throw error;
+    return { success: true };
+  } catch (err: any) {
+    console.error('Error creando mesa:', err);
+    return { success: false, error: err.message };
+  }
+}
+
+// 7d. Eliminar una mesa (solo si está libre, para no perder historial de una mesa en uso)
+export async function eliminarMesa(id: number): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { error } = await supabase
+      .from('mesas')
+      .delete()
+      .eq('id', id);
+
+    if (error) throw error;
+    return { success: true };
+  } catch (err: any) {
+    console.error('Error eliminando mesa:', err);
+    return { success: false, error: err.message };
   }
 }
 
@@ -444,6 +474,103 @@ export async function eliminarProducto(id: number) {
     return { success: true };
   } catch (err: any) {
     console.error('Error eliminando producto:', err);
+    return { success: false, error: err.message };
+  }
+}
+
+// 12b. Subir una imagen de producto al Storage y devolver su URL pública
+export async function subirImagenProducto(file: File): Promise<{ success: boolean; url?: string; error?: string }> {
+  try {
+    const extension = file.name.split('.').pop() || 'jpg';
+    const nombreArchivo = `${Date.now()}-${Math.round(Math.random() * 1e6)}.${extension}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from('productos')
+      .upload(nombreArchivo, file, { upsert: false });
+
+    if (uploadError) throw uploadError;
+
+    const { data } = supabase.storage.from('productos').getPublicUrl(nombreArchivo);
+
+    return { success: true, url: data.publicUrl };
+  } catch (err: any) {
+    console.error('Error subiendo imagen:', err);
+    return { success: false, error: err.message || 'No se pudo subir la imagen.' };
+  }
+}
+
+// 13. Crear una categoría
+export async function crearCategoria(nombre: string) {
+  try {
+    const slug = nombre
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/\s+/g, '-');
+
+    const { data, error } = await supabase
+      .from('categorias')
+      .insert({ nombre: nombre.trim(), slug })
+      .select()
+      .single();
+
+    if (error) throw error;
+    return { success: true, data };
+  } catch (err: any) {
+    console.error('Error creando categoría:', err);
+    return { success: false, error: err.message };
+  }
+}
+
+// 14. Renombrar una categoría
+export async function actualizarCategoria(id: number, nombre: string) {
+  try {
+    const slug = nombre
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/\s+/g, '-');
+
+    const { data, error } = await supabase
+      .from('categorias')
+      .update({ nombre: nombre.trim(), slug })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return { success: true, data };
+  } catch (err: any) {
+    console.error('Error actualizando categoría:', err);
+    return { success: false, error: err.message };
+  }
+}
+
+// 15. Eliminar una categoría (falla si hay productos usándola, a proposito)
+export async function eliminarCategoria(id: number) {
+  try {
+    const { count, error: countError } = await supabase
+      .from('productos')
+      .select('id', { count: 'exact', head: true })
+      .eq('categoria_id', id);
+
+    if (countError) throw countError;
+    if (count && count > 0) {
+      return {
+        success: false,
+        error: `No se puede eliminar: hay ${count} producto(s) usando esta categoría. Reasigná o eliminá esos productos primero.`
+      };
+    }
+
+    const { error } = await supabase
+      .from('categorias')
+      .delete()
+      .eq('id', id);
+
+    if (error) throw error;
+    return { success: true };
+  } catch (err: any) {
+    console.error('Error eliminando categoría:', err);
     return { success: false, error: err.message };
   }
 }

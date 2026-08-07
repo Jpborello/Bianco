@@ -106,12 +106,12 @@ a, button, input, select, textarea {
     gap: 4px !important;
   }
   .product-card-button-notes {
-    font-size: 10px !important;
-    padding: 6px 4px !important;
+    font-size: 11px !important;
+    padding: 9px 6px !important;
   }
   .product-card-button-add {
-    font-size: 10px !important;
-    padding: 6px 4px !important;
+    font-size: 11px !important;
+    padding: 9px 6px !important;
   }
 }
 
