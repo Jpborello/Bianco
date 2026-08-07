@@ -722,58 +722,60 @@ export default function MesaClientePage() {
         display: 'flex',
         gap: '12px'
       }}>
-        <button 
+        <button
           onClick={handleLlamarMozo}
           disabled={procesandoSolicitud}
           style={{
             flex: 1,
-            background: 'var(--card-bg)',
-            border: '1px solid var(--accent-gold)',
-            color: 'var(--text-primary)',
-            padding: '14px',
+            background: 'var(--accent-gold)',
+            border: 'none',
+            color: '#121212',
+            padding: '16px 12px',
             borderRadius: '12px',
-            fontSize: '13px',
-            fontWeight: 600,
-            cursor: 'pointer',
+            fontSize: '14px',
+            fontWeight: 700,
+            cursor: procesandoSolicitud ? 'not-allowed' : 'pointer',
+            opacity: procesandoSolicitud ? 0.7 : 1,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             gap: '8px',
-            boxShadow: 'var(--shadow-soft)'
+            boxShadow: '0 4px 16px rgba(197, 168, 128, 0.45)'
           }}
         >
           {procesandoSolicitud ? (
-            <Loader2 className="animate-spin" size={16} />
+            <Loader2 className="animate-spin" size={18} />
           ) : (
-            <Bell size={16} style={{ color: 'var(--accent-gold)' }} />
+            <Bell size={18} />
           )}
           <span>Llamar al Mozo</span>
         </button>
 
-        <button 
+        <button
           onClick={handlePedirCuenta}
           disabled={procesandoSolicitud}
           style={{
             flex: 1,
-            background: 'var(--card-bg)',
-            border: '1px solid var(--border-color)',
-            color: 'var(--text-primary)',
-            padding: '14px',
+            background: '#2b9348',
+            border: 'none',
+            color: '#ffffff',
+            padding: '16px 12px',
             borderRadius: '12px',
-            fontSize: '13px',
-            fontWeight: 600,
-            cursor: 'pointer',
+            fontSize: '14px',
+            fontWeight: 700,
+            cursor: procesandoSolicitud ? 'not-allowed' : 'pointer',
+            opacity: procesandoSolicitud ? 0.7 : 1,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             gap: '8px',
-            boxShadow: 'var(--shadow-soft)'
+            boxShadow: '0 4px 16px rgba(43, 147, 72, 0.35)'
           }}
         >
           {procesandoSolicitud ? (
-            <Loader2 className="animate-spin" size={16} />
+            <Loader2 className="animate-spin" size={18} />
           ) : (
-            <Receipt size={16} style={{ color: '#2b9348' }} />
+            <Receipt size={18} />
           )}
           <span>Pedir Cuenta</span>
         </button>
