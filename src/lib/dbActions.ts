@@ -43,6 +43,24 @@ export interface DbOrder {
   estado: 'pendiente' | 'preparando' | 'listo' | 'entregado' | 'cancelado';
   total: number;
   created_at: string;
+  
+  // Campos de Cobro y Facturación
+  metodo_pago?: 'efectivo' | 'tarjeta' | 'mercadopago' | 'mixto' | null;
+  desglose_pago?: { efectivo?: number; mercadopago?: number; tarjeta?: number } | null;
+  tipo_comprobante?: 'pre_cuenta' | 'factura_b' | 'factura_a' | null;
+  nro_comprobante?: string | null;
+  cliente_cuit?: string | null;
+  cliente_razon_social?: string | null;
+  cliente_condicion_iva?: string | null;
+  descuento?: number | null;
+  propina?: number | null;
+  monto_neto?: number | null;
+  monto_iva?: number | null;
+  total_facturado?: number | null;
+  cae?: string | null;
+  cae_vencimiento?: string | null;
+  facturado_at?: string | null;
+
   detalles?: DbOrderDetail[];
   mesa?: DbTable;
 }
@@ -571,6 +589,107 @@ export async function eliminarCategoria(id: number) {
     return { success: true };
   } catch (err: any) {
     console.error('Error eliminando categoría:', err);
+    return { success: false, error: err.message };
+  }
+}
+
+// 13. Facturación & Cobro de Pedidos
+export interface DatosFacturacionPayload {
+  metodo_pago: 'efectivo' | 'tarjeta' | 'mercadopago' | 'mixto';
+  desglose_pago?: { efectivo?: number; mercadopago?: number; tarjeta?: number };
+  tipo_comprobante: 'pre_cuenta' | 'factura_b' | 'factura_a';
+  cliente_cuit?: string;
+  cliente_razon_social?: string;
+  cliente_condicion_iva?: string;
+  descuento?: number;
+  propina?: number;
+  liberarMesaDespues?: boolean;
+}
+
+export async function facturarPedido(pedidoId: number, datos: DatosFacturacionPayload) {
+  try {
+    // 1. Obtener pedido actual
+    const { data: order, error: fetchErr } = await supabase
+      .from('pedidos')
+      .select('*, detalles:detalles_pedido(*)')
+      .eq('id', pedidoId)
+      .single();
+
+    if (fetchErr || !order) throw new Error(fetchErr?.message || 'Pedido no encontrado');
+
+    const subtotal = Number(order.total || 0);
+    const desc = Number(datos.descuento || 0);
+    const prop = Number(datos.propina || 0);
+    const baseImponible = Math.max(0, subtotal - desc);
+    
+    // Cálculo de IVA (21% en Factura A/B)
+    const neto = Number((baseImponible / 1.21).toFixed(2));
+    const iva = Number((baseImponible - neto).toFixed(2));
+    const totalFacturado = baseImponible + prop;
+
+    // Generar N° de Comprobante consecutivo
+    const prefix = datos.tipo_comprobante === 'factura_a' ? 'FA-0001-' : datos.tipo_comprobante === 'factura_b' ? 'FB-0001-' : 'TC-0001-';
+    const nroComp = `${prefix}${String(pedidoId).padStart(8, '0')}`;
+    
+    // Generar CAE simulado (preparado para AFIP / ARCA)
+    const caeSimulado = datos.tipo_comprobante !== 'pre_cuenta' ? `7438${Math.floor(10000000000 + Math.random() * 90000000000)}` : null;
+    const caeFechaVenc = caeSimulado ? new Date(Date.now() + 10 * 24 * 60 * 60 * 1000).toISOString() : null;
+    const nowIso = new Date().toISOString();
+
+    const payloadActualizacion: Record<string, any> = {
+      estado: 'entregado',
+      metodo_pago: datos.metodo_pago,
+      desglose_pago: datos.desglose_pago || null,
+      tipo_comprobante: datos.tipo_comprobante,
+      nro_comprobante: nroComp,
+      cliente_cuit: datos.cliente_cuit || null,
+      cliente_razon_social: datos.cliente_razon_social || null,
+      cliente_condicion_iva: datos.cliente_condicion_iva || null,
+      descuento: desc,
+      propina: prop,
+      monto_neto: neto,
+      monto_iva: iva,
+      total_facturado: totalFacturado,
+      cae: caeSimulado,
+      cae_vencimiento: caeFechaVenc,
+      facturado_at: nowIso
+    };
+
+    // Intentar actualización completa en Supabase
+    let updateRes = await supabase.from('pedidos').update(payloadActualizacion).eq('id', pedidoId).select().single();
+
+    // Fallback en caso de que las columnas opcionales aún no hayan sido creadas en el servidor remoto
+    if (updateRes.error && updateRes.error.code === 'PGRST204') {
+      console.warn('Columnas fiscales no encontradas en DB remota, aplicando fallback de estado...');
+      const fallbackPayload = {
+        estado: 'entregado',
+        direccion: order.direccion 
+          ? `${order.direccion} | [Cobro: ${datos.tipo_comprobante} - ${datos.metodo_pago} - N° ${nroComp}]`
+          : `[Cobro: ${datos.tipo_comprobante} - ${datos.metodo_pago} - N° ${nroComp}]`
+      };
+      updateRes = await supabase.from('pedidos').update(fallbackPayload).eq('id', pedidoId).select().single();
+    }
+
+    if (updateRes.error) throw updateRes.error;
+
+    // 2. Si es pedido de mesa y se solicitó liberar mesa, liberarla automáticamente
+    if (order.mesa_id && datos.liberarMesaDespues !== false) {
+      await liberarMesa(order.mesa_id);
+    }
+
+    const comprobanteData = {
+      ...order,
+      ...payloadActualizacion,
+      nro_comprobante: nroComp,
+      total_facturado: totalFacturado,
+      monto_neto: neto,
+      monto_iva: iva,
+      cae: caeSimulado
+    };
+
+    return { success: true, comprobante: comprobanteData };
+  } catch (err: any) {
+    console.error('Error al facturar pedido:', err);
     return { success: false, error: err.message };
   }
 }

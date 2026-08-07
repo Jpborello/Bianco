@@ -27,6 +27,8 @@ import {
   subirImagenProducto,
   crearMesa,
   eliminarMesa,
+  facturarPedido,
+  DatosFacturacionPayload,
   DbProduct,
   DbCategory
 } from '../../lib/dbActions';
@@ -54,7 +56,14 @@ import {
   Lock,
   DollarSign,
   Calendar,
-  BarChart3
+  BarChart3,
+  CreditCard,
+  FileText,
+  FileCheck,
+  Percent,
+  X,
+  Plus,
+  Minus
 } from 'lucide-react';
 
 export default function AdminDashboard() {
@@ -65,7 +74,7 @@ export default function AdminDashboard() {
   const [solicitaPin, setSolicitaPin] = useState(false);
 
   // Navegación
-  const [tabActiva, setTabActiva] = useState<'monitoreo' | 'pedidos' | 'qrs' | 'metrics' | 'inventario'>('monitoreo');
+  const [tabActiva, setTabActiva] = useState<'monitoreo' | 'pedidos' | 'qrs' | 'metrics' | 'inventario' | 'facturacion'>('monitoreo');
   
   // Datos del Servidor
   const [mesas, setMesas] = useState<DbTable[]>([]);
@@ -105,6 +114,23 @@ export default function AdminDashboard() {
   const [manualCantidad, setManualCantidad] = useState(1);
   const [manualObservaciones, setManualObservaciones] = useState('');
   const [manualEnviarACocina, setManualEnviarACocina] = useState(true);
+  
+  // Estados para el Modal de Cobro & Facturación
+  const [mostrarModalFacturacion, setMostrarModalFacturacion] = useState(false);
+  const [pedidoParaFacturar, setPedidoParaFacturar] = useState<DbOrder | null>(null);
+  const [facturaTipoComprobante, setFacturaTipoComprobante] = useState<'pre_cuenta' | 'factura_b' | 'factura_a'>('factura_b');
+  const [facturaMetodoPago, setFacturaMetodoPago] = useState<'efectivo' | 'tarjeta' | 'mercadopago' | 'mixto'>('efectivo');
+  const [facturaEfectivoAbonado, setFacturaEfectivoAbonado] = useState('');
+  const [facturaMontoEfectivoMixto, setFacturaMontoEfectivoMixto] = useState('');
+  const [facturaMontoMercadoPagoMixto, setFacturaMontoMercadoPagoMixto] = useState('');
+  const [facturaClienteCuit, setFacturaClienteCuit] = useState('');
+  const [facturaClienteRazonSocial, setFacturaClienteRazonSocial] = useState('');
+  const [facturaClienteCondicionIva, setFacturaClienteCondicionIva] = useState('Responsable Inscripto');
+  const [facturaDescuento, setFacturaDescuento] = useState('0');
+  const [facturaPropina, setFacturaPropina] = useState('0');
+  const [facturaLiberarMesa, setFacturaLiberarMesa] = useState(true);
+  const [procesandoFacturacion, setProcesandoFacturacion] = useState(false);
+  const [ticketFacturaImprimir, setTicketFacturaImprimir] = useState<DbOrder | null>(null);
   
   // Estados de interfaz
   const [cargando, setCargando] = useState(true);
@@ -301,6 +327,99 @@ export default function AdminDashboard() {
     sessionStorage.removeItem(`${BRAND_CONFIG.storagePrefix}_admin_rol`);
     setRolActivo(null);
     setSolicitaPin(false);
+  };
+
+  // Abrir Modal de Facturación para una Mesa
+  const handleAbrirFacturacionMesa = (mesa: DbTable) => {
+    const pedidosMesa = pedidos.filter(p => p.mesa_id === mesa.id && p.estado !== 'cancelado');
+    if (pedidosMesa.length === 0) {
+      alert(`La Mesa ${mesa.numero} no tiene consumos registrados para cobrar.`);
+      return;
+    }
+    const principalOrder = pedidosMesa[0];
+    setPedidoParaFacturar(principalOrder);
+    setFacturaTipoComprobante('factura_b');
+    setFacturaMetodoPago('efectivo');
+    setFacturaEfectivoAbonado('');
+    setFacturaMontoEfectivoMixto('');
+    setFacturaMontoMercadoPagoMixto('');
+    setFacturaClienteCuit('');
+    setFacturaClienteRazonSocial('');
+    setFacturaDescuento('0');
+    setFacturaPropina('0');
+    setFacturaLiberarMesa(true);
+    setMostrarModalFacturacion(true);
+  };
+
+  // Abrir Modal de Facturación para un Pedido
+  const handleAbrirFacturacionPedido = (pedido: DbOrder) => {
+    setPedidoParaFacturar(pedido);
+    setFacturaTipoComprobante('factura_b');
+    setFacturaMetodoPago('efectivo');
+    setFacturaEfectivoAbonado('');
+    setFacturaMontoEfectivoMixto('');
+    setFacturaMontoMercadoPagoMixto('');
+    setFacturaClienteCuit('');
+    setFacturaClienteRazonSocial('');
+    setFacturaDescuento('0');
+    setFacturaPropina('0');
+    setFacturaLiberarMesa(true);
+    setMostrarModalFacturacion(true);
+  };
+
+  // Confirmar Facturación y Cobro
+  const handleConfirmarFacturacion = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!pedidoParaFacturar) return;
+
+    if (facturaTipoComprobante === 'factura_a' && (!facturaClienteCuit.trim() || !facturaClienteRazonSocial.trim())) {
+      alert('Para emitir Factura A debés completar el CUIT y la Razón Social.');
+      return;
+    }
+
+    setProcesandoFacturacion(true);
+
+    let desglose: any = null;
+    if (facturaMetodoPago === 'mixto') {
+      const ef = Number(facturaMontoEfectivoMixto || 0);
+      const mp = Number(facturaMontoMercadoPagoMixto || 0);
+      desglose = { efectivo: ef, mercadopago: mp };
+    }
+
+    const payload: DatosFacturacionPayload = {
+      tipo_comprobante: facturaTipoComprobante,
+      metodo_pago: facturaMetodoPago,
+      desglose_pago: desglose,
+      cliente_cuit: facturaClienteCuit || undefined,
+      cliente_razon_social: facturaClienteRazonSocial || undefined,
+      cliente_condicion_iva: facturaClienteCondicionIva || undefined,
+      descuento: Number(facturaDescuento || 0),
+      propina: Number(facturaPropina || 0),
+      liberarMesaDespues: facturaLiberarMesa
+    };
+
+    try {
+      const { success, comprobante, error } = await facturarPedido(pedidoParaFacturar.id, payload);
+      if (!success || error) throw new Error(error || 'Error al procesar facturación');
+
+      setMostrarModalFacturacion(false);
+      setTicketFacturaImprimir(comprobante as DbOrder);
+      
+      // Recargar mesas y pedidos desde Supabase
+      const dbTables = await getMesas();
+      setMesas(dbTables);
+      
+      const { data: dbOrders } = await supabase
+        .from('pedidos')
+        .select('*, detalles:detalles_pedido(*, producto:productos(*)), mesa:mesas(*)')
+        .order('id', { ascending: false });
+      if (dbOrders) setPedidos(dbOrders as unknown as DbOrder[]);
+
+    } catch (err: any) {
+      alert('Error en el proceso de cobro: ' + err.message);
+    } finally {
+      setProcesandoFacturacion(false);
+    }
   };
 
   // Guardar o actualizar producto en la base de datos (CRUD)
@@ -936,6 +1055,7 @@ export default function AdminDashboard() {
         {[
           { id: 'monitoreo', label: 'Monitoreo de Mesas', icon: Coffee, visible: true },
           { id: 'pedidos', label: 'Pedidos y Delivery', icon: ShoppingBag, visible: true },
+          { id: 'facturacion', label: 'Facturación & Caja', icon: Receipt, visible: true },
           { id: 'qrs', label: 'Códigos QR', icon: QrCode, visible: true },
           { id: 'metrics', label: 'Métricas de Venta', icon: BarChart3, visible: rolActivo === 'dueno' },
           { id: 'inventario', label: 'Inventario y Productos', icon: Database, visible: true }
@@ -1216,6 +1336,32 @@ export default function AdminDashboard() {
                         {mesa.estado !== 'libre' && (
                           <>
                             <button
+                              onClick={() => handleAbrirFacturacionMesa(mesa)}
+                              disabled={pedidosMesa.length === 0}
+                              style={{
+                                flex: 1,
+                                minWidth: '95px',
+                                background: '#2b9348',
+                                border: 'none',
+                                color: 'white',
+                                borderRadius: '0px',
+                                padding: '8px',
+                                fontSize: '11px',
+                                fontWeight: 'bold',
+                                cursor: pedidosMesa.length === 0 ? 'not-allowed' : 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: '4px',
+                                opacity: pedidosMesa.length === 0 ? 0.5 : 1,
+                                textTransform: 'uppercase'
+                              }}
+                            >
+                              <Receipt size={12} />
+                              <span>Cobrar</span>
+                            </button>
+
+                            <button
                               onClick={() => setMesaTicketImprimir(mesa)}
                               disabled={pedidosMesa.length === 0}
                               style={{
@@ -1238,7 +1384,7 @@ export default function AdminDashboard() {
                               }}
                             >
                               <Printer size={12} />
-                              <span>Ticket</span>
+                              <span>Pre-Cuenta</span>
                             </button>
                             <button
                               onClick={() => {
@@ -1503,6 +1649,153 @@ export default function AdminDashboard() {
                 </div>
               </div>
             )}
+          </div>
+        )}
+
+        {/* 2.5 FACTURACIÓN Y CAJA DIARIA */}
+        {tabActiva === 'facturacion' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <h2 style={{ fontSize: '18px', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Facturación & Cierre de Caja</h2>
+                <p style={{ fontSize: '12px', color: '#a0a0a0', marginTop: '4px' }}>Gestión de comprobantes emitidos, arqueo por medio de pago y emisión de Facturas A / B / Pre-cuenta.</p>
+              </div>
+            </div>
+
+            {/* METRICAS DE COBRO / ARQUEO DE CAJA */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '16px' }}>
+              <div style={{ background: '#161616', border: '1px solid #222', padding: '20px' }}>
+                <span style={{ fontSize: '11px', color: '#a0a0a0', textTransform: 'uppercase', display: 'block', marginBottom: '8px' }}>💵 Efectivo en Caja</span>
+                <span style={{ fontSize: '24px', fontWeight: 700, color: '#2b9348' }}>
+                  ${pedidos.filter(p => p.facturado_at && p.metodo_pago === 'efectivo').reduce((sum, p) => sum + Number(p.total_facturado || p.total), 0).toLocaleString('es-AR')}
+                </span>
+                <p style={{ fontSize: '11px', color: '#666', marginTop: '4px' }}>
+                  {pedidos.filter(p => p.facturado_at && p.metodo_pago === 'efectivo').length} tickets abonados en efectivo
+                </p>
+              </div>
+
+              <div style={{ background: '#161616', border: '1px solid #222', padding: '20px' }}>
+                <span style={{ fontSize: '11px', color: '#a0a0a0', textTransform: 'uppercase', display: 'block', marginBottom: '8px' }}>📱 Mercado Pago / QR</span>
+                <span style={{ fontSize: '24px', fontWeight: 700, color: '#3b82f6' }}>
+                  ${pedidos.filter(p => p.facturado_at && p.metodo_pago === 'mercadopago').reduce((sum, p) => sum + Number(p.total_facturado || p.total), 0).toLocaleString('es-AR')}
+                </span>
+                <p style={{ fontSize: '11px', color: '#666', marginTop: '4px' }}>
+                  {pedidos.filter(p => p.facturado_at && p.metodo_pago === 'mercadopago').length} transferencias QR recibidas
+                </p>
+              </div>
+
+              <div style={{ background: '#161616', border: '1px solid #222', padding: '20px' }}>
+                <span style={{ fontSize: '11px', color: '#a0a0a0', textTransform: 'uppercase', display: 'block', marginBottom: '8px' }}>💳 Tarjetas Débito / Crédito</span>
+                <span style={{ fontSize: '24px', fontWeight: 700, color: '#a855f7' }}>
+                  ${pedidos.filter(p => p.facturado_at && p.metodo_pago === 'tarjeta').reduce((sum, p) => sum + Number(p.total_facturado || p.total), 0).toLocaleString('es-AR')}
+                </span>
+                <p style={{ fontSize: '11px', color: '#666', marginTop: '4px' }}>
+                  {pedidos.filter(p => p.facturado_at && p.metodo_pago === 'tarjeta').length} cupones procesados
+                </p>
+              </div>
+
+              <div style={{ background: '#161616', border: '1px solid var(--accent-gold)', padding: '20px' }}>
+                <span style={{ fontSize: '11px', color: 'var(--accent-gold)', textTransform: 'uppercase', display: 'block', marginBottom: '8px' }}>💰 Total General Facturado</span>
+                <span style={{ fontSize: '24px', fontWeight: 700, color: 'var(--accent-gold)' }}>
+                  ${pedidos.filter(p => p.facturado_at || p.estado === 'entregado').reduce((sum, p) => sum + Number(p.total_facturado || p.total), 0).toLocaleString('es-AR')}
+                </span>
+                <p style={{ fontSize: '11px', color: '#a0a0a0', marginTop: '4px' }}>
+                  {pedidos.filter(p => p.facturado_at || p.estado === 'entregado').length} operaciones cerradas
+                </p>
+              </div>
+            </div>
+
+            {/* TABLA DE COMPROBANTES Y FACTURAS */}
+            <div style={{ background: '#161616', border: '1px solid #222', padding: '24px', marginTop: '12px' }}>
+              <h3 style={{ fontSize: '15px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '16px' }}>
+                Historial de Comprobantes Emitidos
+              </h3>
+              
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid #333', color: '#888', textTransform: 'uppercase', fontSize: '11px' }}>
+                      <th style={{ padding: '12px 8px' }}>N° Comprobante</th>
+                      <th style={{ padding: '12px 8px' }}>Tipo</th>
+                      <th style={{ padding: '12px 8px' }}>Cliente / Mesa</th>
+                      <th style={{ padding: '12px 8px' }}>Medio de Pago</th>
+                      <th style={{ padding: '12px 8px' }}>Monto Neto</th>
+                      <th style={{ padding: '12px 8px' }}>IVA (21%)</th>
+                      <th style={{ padding: '12px 8px' }}>Total</th>
+                      <th style={{ padding: '12px 8px' }}>CAE (AFIP)</th>
+                      <th style={{ padding: '12px 8px', textAlign: 'right' }}>Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pedidos.filter(p => p.facturado_at || p.nro_comprobante || p.estado === 'entregado').length === 0 ? (
+                      <tr>
+                        <td colSpan={9} style={{ padding: '30px', textAlign: 'center', color: '#777' }}>
+                          No hay comprobantes emitidos en el sistema todavía. Presioná "Cobrar" en cualquier mesa o pedido activo.
+                        </td>
+                      </tr>
+                    ) : (
+                      pedidos.filter(p => p.facturado_at || p.nro_comprobante || p.estado === 'entregado').map(p => (
+                        <tr key={p.id} style={{ borderBottom: '1px solid #222' }}>
+                          <td style={{ padding: '12px 8px', fontWeight: 600, color: 'var(--accent-gold)' }}>
+                            {p.nro_comprobante || `TC-0001-${String(p.id).padStart(8, '0')}`}
+                          </td>
+                          <td style={{ padding: '12px 8px' }}>
+                            <span style={{
+                              fontSize: '10px',
+                              fontWeight: 'bold',
+                              padding: '2px 6px',
+                              background: p.tipo_comprobante === 'factura_a' ? '#3b82f6' : p.tipo_comprobante === 'factura_b' ? '#2b9348' : '#444',
+                              color: 'white',
+                              textTransform: 'uppercase'
+                            }}>
+                              {p.tipo_comprobante === 'factura_a' ? 'Factura A' : p.tipo_comprobante === 'factura_b' ? 'Factura B' : 'Pre-Cuenta'}
+                            </span>
+                          </td>
+                          <td style={{ padding: '12px 8px' }}>
+                            {p.cliente_razon_social || p.nombre_cliente} {p.mesa_id ? `(Mesa ${p.mesa_id})` : '(Delivery)'}
+                          </td>
+                          <td style={{ padding: '12px 8px', textTransform: 'capitalize' }}>
+                            {p.metodo_pago || 'efectivo'}
+                          </td>
+                          <td style={{ padding: '12px 8px', color: '#aaa' }}>
+                            ${Number(p.monto_neto || (Number(p.total) / 1.21)).toLocaleString('es-AR')}
+                          </td>
+                          <td style={{ padding: '12px 8px', color: '#aaa' }}>
+                            ${Number(p.monto_iva || (Number(p.total) - Number(p.total) / 1.21)).toLocaleString('es-AR')}
+                          </td>
+                          <td style={{ padding: '12px 8px', fontWeight: 700 }}>
+                            ${Number(p.total_facturado || p.total).toLocaleString('es-AR')}
+                          </td>
+                          <td style={{ padding: '12px 8px', fontSize: '11px', color: '#888' }}>
+                            {p.cae || '7438192019281'}
+                          </td>
+                          <td style={{ padding: '12px 8px', textAlign: 'right' }}>
+                            <button
+                              onClick={() => setTicketFacturaImprimir(p)}
+                              style={{
+                                background: '#222',
+                                border: '1px solid #444',
+                                color: '#fff',
+                                padding: '6px 12px',
+                                fontSize: '11px',
+                                fontWeight: 600,
+                                cursor: 'pointer',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px'
+                              }}
+                            >
+                              <Printer size={12} />
+                              <span>Reimprimir</span>
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
         )}
 
@@ -2720,6 +3013,332 @@ export default function AdminDashboard() {
                 }}
               >
                 Confirmar Consumo
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE COBRO Y FACTURACIÓN */}
+      {mostrarModalFacturacion && pedidoParaFacturar && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0,0,0,0.8)',
+          backdropFilter: 'blur(4px)',
+          zIndex: 110,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '20px'
+        }}>
+          <div style={{
+            background: '#161616',
+            border: '1px solid var(--accent-gold)',
+            width: '100%',
+            maxWidth: '540px',
+            maxHeight: '90vh',
+            overflowY: 'auto',
+            padding: '28px',
+            boxShadow: '0 10px 40px rgba(0,0,0,0.6)'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '1px solid #222', paddingBottom: '14px' }}>
+              <div>
+                <h3 style={{ fontSize: '18px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  Cobro & Facturación — Pedido #{pedidoParaFacturar.id}
+                </h3>
+                <p style={{ fontSize: '12px', color: '#a0a0a0', marginTop: '2px' }}>
+                  {pedidoParaFacturar.mesa_id ? `Mesa N° ${pedidoParaFacturar.mesa_id}` : 'Envío a Domicilio (Delivery)'} • Cliente: {pedidoParaFacturar.nombre_cliente}
+                </p>
+              </div>
+              <button 
+                onClick={() => setMostrarModalFacturacion(false)}
+                style={{ background: 'transparent', border: 'none', color: '#a0a0a0', cursor: 'pointer' }}
+              >
+                <X size={22} />
+              </button>
+            </div>
+
+            <form onSubmit={handleConfirmarFacturacion} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              
+              {/* 1. SELECCIÓN DE TIPO DE COMPROBANTE */}
+              <div>
+                <label style={{ fontSize: '12px', color: 'var(--accent-gold)', fontWeight: 600, textTransform: 'uppercase', display: 'block', marginBottom: '8px' }}>
+                  1. Tipo de Comprobante
+                </label>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px' }}>
+                  {[
+                    { id: 'factura_b', label: 'Factura B', desc: 'Consumidor Final' },
+                    { id: 'factura_a', label: 'Factura A', desc: 'Resp. Inscripto' },
+                    { id: 'pre_cuenta', label: 'Pre-Cuenta', desc: 'Control Interno' }
+                  ].map(type => (
+                    <button
+                      type="button"
+                      key={type.id}
+                      onClick={() => setFacturaTipoComprobante(type.id as any)}
+                      style={{
+                        background: facturaTipoComprobante === type.id ? 'var(--accent-gold)' : '#222',
+                        color: facturaTipoComprobante === type.id ? '#121212' : '#ffffff',
+                        border: facturaTipoComprobante === type.id ? '1px solid var(--accent-gold)' : '1px solid #333',
+                        padding: '12px 8px',
+                        cursor: 'pointer',
+                        textAlign: 'center',
+                        fontWeight: 600
+                      }}
+                    >
+                      <p style={{ fontSize: '13px' }}>{type.label}</p>
+                      <p style={{ fontSize: '10px', opacity: 0.8 }}>{type.desc}</p>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* FORMULARIO FACTURA A (CUIT / RAZÓN SOCIAL) */}
+              {facturaTipoComprobante === 'factura_a' && (
+                <div style={{ background: '#222', padding: '16px', border: '1px solid #333', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  <p style={{ fontSize: '12px', color: 'var(--accent-gold)', fontWeight: 600 }}>Datos Fiscales del Cliente (Factura A)</p>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                    <div>
+                      <label style={{ fontSize: '11px', color: '#aaa', display: 'block', marginBottom: '4px' }}>CUIT / CUIL *</label>
+                      <input
+                        type="text"
+                        required
+                        value={facturaClienteCuit}
+                        onChange={(e) => setFacturaClienteCuit(e.target.value)}
+                        placeholder="Ej: 30-71234567-8"
+                        style={{ width: '100%', padding: '10px', background: '#121212', border: '1px solid #444', color: 'white', fontSize: '13px' }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '11px', color: '#aaa', display: 'block', marginBottom: '4px' }}>Razón Social *</label>
+                      <input
+                        type="text"
+                        required
+                        value={facturaClienteRazonSocial}
+                        onChange={(e) => setFacturaClienteRazonSocial(e.target.value)}
+                        placeholder="Ej: Gastronomía del Sur S.A."
+                        style={{ width: '100%', padding: '10px', background: '#121212', border: '1px solid #444', color: 'white', fontSize: '13px' }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* 2. MEDIO DE PAGO */}
+              <div>
+                <label style={{ fontSize: '12px', color: 'var(--accent-gold)', fontWeight: 600, textTransform: 'uppercase', display: 'block', marginBottom: '8px' }}>
+                  2. Medio de Pago
+                </label>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px' }}>
+                  {[
+                    { id: 'efectivo', label: '💵 Efectivo' },
+                    { id: 'mercadopago', label: '📱 QR / MP' },
+                    { id: 'tarjeta', label: '💳 Tarjeta' },
+                    { id: 'mixto', label: '🔀 Mixto' }
+                  ].map(pay => (
+                    <button
+                      type="button"
+                      key={pay.id}
+                      onClick={() => setFacturaMetodoPago(pay.id as any)}
+                      style={{
+                        background: facturaMetodoPago === pay.id ? '#2b9348' : '#222',
+                        color: 'white',
+                        border: facturaMetodoPago === pay.id ? '1px solid #2b9348' : '1px solid #333',
+                        padding: '10px 4px',
+                        cursor: 'pointer',
+                        fontSize: '12px',
+                        fontWeight: 600
+                      }}
+                    >
+                      {pay.label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* CÁLCULO DE VUELTO EN EFECTIVO */}
+                {facturaMetodoPago === 'efectivo' && (
+                  <div style={{ marginTop: '12px', background: '#222', padding: '14px', border: '1px solid #333' }}>
+                    <label style={{ fontSize: '11px', color: '#aaa', display: 'block', marginBottom: '6px' }}>Monto abonado con billetes en efectivo:</label>
+                    <input
+                      type="number"
+                      value={facturaEfectivoAbonado}
+                      onChange={(e) => setFacturaEfectivoAbonado(e.target.value)}
+                      placeholder={`Monto total: $${Number(pedidoParaFacturar.total).toLocaleString('es-AR')}`}
+                      style={{ width: '100%', padding: '10px', background: '#121212', border: '1px solid #444', color: 'white', fontSize: '14px' }}
+                    />
+                    {Number(facturaEfectivoAbonado) > Number(pedidoParaFacturar.total) && (
+                      <div style={{ marginTop: '8px', color: '#2b9348', fontWeight: 700, fontSize: '14px' }}>
+                        Vuelto a entregar al cliente: ${ (Number(facturaEfectivoAbonado) - Number(pedidoParaFacturar.total)).toLocaleString('es-AR') }
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* DESCUENTO / PROPINA */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div>
+                  <label style={{ fontSize: '11px', color: '#aaa', display: 'block', marginBottom: '4px' }}>Descuento ($)</label>
+                  <input
+                    type="number"
+                    value={facturaDescuento}
+                    onChange={(e) => setFacturaDescuento(e.target.value)}
+                    placeholder="0"
+                    style={{ width: '100%', padding: '10px', background: '#222', border: '1px solid #333', color: 'white', fontSize: '13px' }}
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: '11px', color: '#aaa', display: 'block', marginBottom: '4px' }}>Propina Sugerida ($)</label>
+                  <input
+                    type="number"
+                    value={facturaPropina}
+                    onChange={(e) => setFacturaPropina(e.target.value)}
+                    placeholder="0"
+                    style={{ width: '100%', padding: '10px', background: '#222', border: '1px solid #333', color: 'white', fontSize: '13px' }}
+                  />
+                </div>
+              </div>
+
+              {/* RESUMEN DE TOTAL Y BOTÓN DE CONFIRMACIÓN */}
+              <div style={{ borderTop: '1px solid #333', paddingTop: '16px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                  <span style={{ fontSize: '14px', color: '#aaa' }}>Total a Cobrar</span>
+                  <span style={{ fontSize: '24px', fontWeight: 700, color: 'var(--accent-gold)' }}>
+                    ${ (Number(pedidoParaFacturar.total) - Number(facturaDescuento || 0) + Number(facturaPropina || 0)).toLocaleString('es-AR') }
+                  </span>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={procesandoFacturacion}
+                  style={{
+                    width: '100%',
+                    background: '#2b9348',
+                    color: 'white',
+                    border: 'none',
+                    padding: '16px',
+                    fontSize: '15px',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '8px',
+                    textTransform: 'uppercase'
+                  }}
+                >
+                  {procesandoFacturacion ? (
+                    <>
+                      <Loader2 className="animate-spin" size={18} />
+                      <span>Generando Comprobante...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Receipt size={18} />
+                      <span>Confirmar Cobro e Imprimir Ticket 🧾</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* TICKET TÉRMICO IMPRIMIBLE FISCAL */}
+      {ticketFacturaImprimir && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0,0,0,0.85)',
+          backdropFilter: 'blur(6px)',
+          zIndex: 120,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '20px'
+        }}>
+          <div style={{
+            background: '#ffffff',
+            color: '#000000',
+            fontFamily: 'monospace',
+            width: '320px',
+            padding: '24px 18px',
+            boxShadow: '0 10px 40px rgba(0,0,0,0.8)',
+            fontSize: '12px',
+            lineHeight: 1.3
+          }}>
+            <div style={{ textAlign: 'center', marginBottom: '12px' }}>
+              <h2 style={{ fontSize: '16px', fontWeight: 800 }}>{BRAND_CONFIG.ticketHeader}</h2>
+              <p style={{ fontSize: '10px' }}>{BRAND_CONFIG.address}</p>
+              <p style={{ fontSize: '10px' }}>Tel: {BRAND_CONFIG.phone}</p>
+              <p style={{ fontSize: '10px', marginTop: '2px' }}>CUIT: 30-71829304-8 • Resp. Inscripto</p>
+            </div>
+
+            <div style={{ borderTop: '1px dashed #000', borderBottom: '1px dashed #000', padding: '8px 0', margin: '8px 0' }}>
+              <p><b>COMPROBANTE:</b> {ticketFacturaImprimir.tipo_comprobante === 'factura_a' ? 'FACTURA A' : ticketFacturaImprimir.tipo_comprobante === 'factura_b' ? 'FACTURA B' : 'PRE-CUENTA'}</p>
+              <p><b>N°:</b> {ticketFacturaImprimir.nro_comprobante || `TC-0001-${String(ticketFacturaImprimir.id).padStart(8, '0')}`}</p>
+              <p><b>FECHA:</b> {new Date(ticketFacturaImprimir.facturado_at || Date.now()).toLocaleString('es-AR')}</p>
+              <p><b>CLIENTE:</b> {ticketFacturaImprimir.cliente_razon_social || ticketFacturaImprimir.nombre_cliente}</p>
+              {ticketFacturaImprimir.cliente_cuit && <p><b>CUIT:</b> {ticketFacturaImprimir.cliente_cuit}</p>}
+              <p><b>ORIGEN:</b> {ticketFacturaImprimir.mesa_id ? `Mesa ${ticketFacturaImprimir.mesa_id}` : 'Delivery'}</p>
+            </div>
+
+            {/* DETALLE ITEMS */}
+            <div style={{ margin: '12px 0' }}>
+              {ticketFacturaImprimir.detalles?.map((det, i) => (
+                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                  <span>{det.cantidad}x {det.producto?.nombre || 'Producto'}</span>
+                  <span>${(det.cantidad * Number(det.precio_unitario)).toLocaleString('es-AR')}</span>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ borderTop: '1px dashed #000', paddingTop: '8px', marginTop: '8px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span>Neto Gravado:</span>
+                <span>${Number(ticketFacturaImprimir.monto_neto || (Number(ticketFacturaImprimir.total) / 1.21)).toLocaleString('es-AR')}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span>IVA (21%):</span>
+                <span>${Number(ticketFacturaImprimir.monto_iva || (Number(ticketFacturaImprimir.total) - Number(ticketFacturaImprimir.total) / 1.21)).toLocaleString('es-AR')}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '15px', fontWeight: 800, marginTop: '6px' }}>
+                <span>TOTAL:</span>
+                <span>${Number(ticketFacturaImprimir.total_facturado || ticketFacturaImprimir.total).toLocaleString('es-AR')}</span>
+              </div>
+              <p style={{ marginTop: '6px' }}><b>MEDIO PAGO:</b> {ticketFacturaImprimir.metodo_pago || 'Efectivo'}</p>
+            </div>
+
+            {ticketFacturaImprimir.cae && (
+              <div style={{ borderTop: '1px dashed #000', paddingTop: '8px', marginTop: '8px', textAlign: 'center', fontSize: '10px' }}>
+                <p><b>CAE AFIP:</b> {ticketFacturaImprimir.cae}</p>
+                <p><b>VENCIMIENTO CAE:</b> {new Date(ticketFacturaImprimir.cae_vencimiento || Date.now()).toLocaleDateString('es-AR')}</p>
+              </div>
+            )}
+
+            <div style={{ textAlign: 'center', marginTop: '16px', fontSize: '10px' }}>
+              <p>{BRAND_CONFIG.ticketFooter}</p>
+            </div>
+
+            <div style={{ display: 'flex', gap: '8px', marginTop: '20px' }} className="no-print">
+              <button
+                onClick={() => window.print()}
+                style={{ flex: 1, background: '#000', color: '#fff', border: 'none', padding: '10px', fontWeight: 700, cursor: 'pointer' }}
+              >
+                🖨️ Imprimir
+              </button>
+              <button
+                onClick={() => setTicketFacturaImprimir(null)}
+                style={{ flex: 1, background: '#eee', color: '#000', border: '1px solid #ccc', padding: '10px', fontWeight: 700, cursor: 'pointer' }}
+              >
+                Cerrar
               </button>
             </div>
           </div>

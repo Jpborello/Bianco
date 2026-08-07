@@ -19,7 +19,10 @@ import {
   Phone, 
   Sparkles, 
   Loader2, 
-  Utensils 
+  Utensils,
+  Search,
+  Plus,
+  Minus
 } from 'lucide-react';
 
 export default function MesaClientePage() {
@@ -36,6 +39,7 @@ export default function MesaClientePage() {
   const [productos, setProductos] = useState<Producto[]>([]);
   const [categorias, setCategorias] = useState<string[]>([]);
   const [categoriaActiva, setCategoriaActiva] = useState('Todos');
+  const [busqueda, setBusqueda] = useState('');
   const [cargando, setCargando] = useState(true);
 
   // Estado del Carrito
@@ -403,10 +407,17 @@ export default function MesaClientePage() {
     }
   };
 
-  const productosFiltrados =
-    categoriaActiva === 'Todos'
-      ? productos
-      : productos.filter((p) => p.categoria === categoriaActiva);
+  const productosFiltrados = productos.filter((p) => {
+    const coincideCategoria = categoriaActiva === 'Todos' || p.categoria === categoriaActiva;
+    const coincideBusqueda = busqueda.trim() === '' || 
+      p.nombre.toLowerCase().includes(busqueda.toLowerCase()) || 
+      p.descripcion.toLowerCase().includes(busqueda.toLowerCase());
+    return coincideCategoria && coincideBusqueda;
+  });
+
+  const getItemCantidad = (productoId: number) => {
+    return carrito.filter(item => item.producto.id === productoId).reduce((sum, item) => sum + item.cantidad, 0);
+  };
 
   const totalCarrito = carrito.reduce((sum, item) => sum + item.producto.precio * item.cantidad, 0);
   const totalItems = carrito.reduce((sum, item) => sum + item.cantidad, 0);
@@ -848,15 +859,63 @@ export default function MesaClientePage() {
         </section>
       )}
 
+      {/* BUSCADOR INSTANTÁNEO EN MESA */}
+      <div style={{ padding: '0 20px 8px' }}>
+        <div style={{ position: 'relative' }}>
+          <Search size={16} style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }} />
+          <input
+            type="text"
+            value={busqueda}
+            onChange={(e) => setBusqueda(e.target.value)}
+            placeholder="Buscar plato, trago o bebida..."
+            style={{
+              width: '100%',
+              padding: '10px 14px 10px 38px',
+              borderRadius: '25px',
+              border: '1px solid var(--border-color)',
+              background: 'var(--card-bg)',
+              fontSize: '13px',
+              color: 'var(--text-primary)',
+              boxShadow: 'var(--shadow-soft)',
+              outline: 'none'
+            }}
+          />
+          {busqueda && (
+            <button
+              onClick={() => setBusqueda('')}
+              style={{
+                position: 'absolute',
+                right: '10px',
+                top: '50%',
+                transform: 'translateY(-50%)',
+                background: 'transparent',
+                border: 'none',
+                color: 'var(--text-secondary)',
+                cursor: 'pointer',
+                padding: '4px'
+              }}
+            >
+              <X size={14} />
+            </button>
+          )}
+        </div>
+      </div>
+
       {/* CATEGORÍAS */}
-      <nav style={{
-        display: 'flex',
-        gap: '8px',
-        padding: '12px 20px',
-        overflowX: 'auto',
-        whiteSpace: 'nowrap',
-        scrollbarWidth: 'none'
-      }}>
+      <nav 
+        className="no-scrollbar"
+        style={{
+          display: 'flex',
+          gap: '8px',
+          padding: '8px 20px 14px',
+          overflowX: 'auto',
+          whiteSpace: 'nowrap',
+          position: 'sticky',
+          top: '61px',
+          zIndex: 40,
+          background: 'var(--bg-color)'
+        }}
+      >
         <button
           onClick={() => setCategoriaActiva('Todos')}
           style={{
@@ -899,7 +958,7 @@ export default function MesaClientePage() {
         {cargando ? (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '160px', gap: '12px' }}>
             <Loader2 className="animate-spin" style={{ color: 'var(--accent-gold)' }} size={28} />
-            <p style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>Cargando carta dulce...</p>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>Cargando carta peruana...</p>
           </div>
         ) : (
           <div className="product-grid">
@@ -971,50 +1030,104 @@ export default function MesaClientePage() {
                     )}
                   </div>
 
-                  <div className="product-card-actions" style={{ display: 'flex', gap: '6px' }}>
+                  <div className="product-card-actions" style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
                     <button
                       onClick={() => {
                         setProductoConNotaId(prod.id);
                         setNotaTemporal('');
                       }}
                       disabled={prod.stock !== undefined && prod.stock !== null && prod.stock <= 0}
-                      className="product-card-button-notes"
+                      title="Notas"
                       style={{
-                        flex: 1,
+                        padding: '6px 8px',
                         background: 'transparent',
                         border: '1px solid var(--border-color)',
                         borderRadius: '6px',
-                        padding: '6px',
                         fontSize: '11px',
                         cursor: (prod.stock !== undefined && prod.stock !== null && prod.stock <= 0) ? 'not-allowed' : 'pointer',
                         color: 'var(--text-secondary)',
                         opacity: (prod.stock !== undefined && prod.stock !== null && prod.stock <= 0) ? 0.5 : 1
                       }}
                     >
-                      Notas
+                      Nota
                     </button>
-                    <button
-                      onClick={() => agregarAlCarrito(prod)}
-                      disabled={prod.stock !== undefined && prod.stock !== null && prod.stock <= 0}
-                      className="product-card-button-add"
-                      style={{
-                        flex: 2,
-                        background: (prod.stock !== undefined && prod.stock !== null && prod.stock <= 0) ? 'var(--border-color)' : 'var(--text-primary)',
-                        color: (prod.stock !== undefined && prod.stock !== null && prod.stock <= 0) ? 'var(--text-secondary)' : 'var(--bg-color)',
-                        border: 'none',
-                        borderRadius: '6px',
-                        padding: '6px',
-                        fontSize: '11px',
-                        fontWeight: 500,
-                        cursor: (prod.stock !== undefined && prod.stock !== null && prod.stock <= 0) ? 'not-allowed' : 'pointer',
+
+                    {getItemCantidad(prod.id) > 0 ? (
+                      <div style={{
+                        flex: 1,
                         display: 'flex',
                         alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: '4px'
-                      }}
-                    >
-                      {(prod.stock !== undefined && prod.stock !== null && prod.stock <= 0) ? 'Agotado' : 'Agregar'}
-                    </button>
+                        justifyContent: 'space-between',
+                        background: 'var(--accent-light-gold)',
+                        border: '1px solid var(--accent-gold)',
+                        borderRadius: '6px',
+                        padding: '3px 4px'
+                      }}>
+                        <button
+                          onClick={() => eliminarDelCarrito(prod.id)}
+                          style={{
+                            width: '24px',
+                            height: '24px',
+                            borderRadius: '4px',
+                            border: 'none',
+                            background: 'white',
+                            color: 'var(--text-primary)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            cursor: 'pointer',
+                            boxShadow: 'var(--shadow-soft)'
+                          }}
+                        >
+                          <Minus size={12} />
+                        </button>
+                        <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                          {getItemCantidad(prod.id)}
+                        </span>
+                        <button
+                          onClick={() => agregarAlCarrito(prod)}
+                          disabled={prod.stock !== undefined && prod.stock !== null && getItemCantidad(prod.id) >= prod.stock}
+                          style={{
+                            width: '24px',
+                            height: '24px',
+                            borderRadius: '4px',
+                            border: 'none',
+                            background: 'var(--accent-gold)',
+                            color: 'white',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            cursor: 'pointer',
+                            boxShadow: 'var(--shadow-soft)'
+                          }}
+                        >
+                          <Plus size={12} />
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => agregarAlCarrito(prod)}
+                        disabled={prod.stock !== undefined && prod.stock !== null && prod.stock <= 0}
+                        style={{
+                          flex: 1,
+                          background: (prod.stock !== undefined && prod.stock !== null && prod.stock <= 0) ? 'var(--border-color)' : 'var(--text-primary)',
+                          color: (prod.stock !== undefined && prod.stock !== null && prod.stock <= 0) ? 'var(--text-secondary)' : 'var(--bg-color)',
+                          border: 'none',
+                          borderRadius: '6px',
+                          padding: '8px 6px',
+                          fontSize: '11px',
+                          fontWeight: 600,
+                          cursor: (prod.stock !== undefined && prod.stock !== null && prod.stock <= 0) ? 'not-allowed' : 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '4px'
+                        }}
+                      >
+                        <Plus size={12} />
+                        <span>{(prod.stock !== undefined && prod.stock !== null && prod.stock <= 0) ? 'Agotado' : 'Agregar'}</span>
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1022,6 +1135,68 @@ export default function MesaClientePage() {
           </div>
         )}
       </main>
+
+      {/* BARRA FLOTANTE DE CARRITO DE MESA (MOBILE / STICKY INFERIOR) */}
+      {totalItems > 0 && !verCarrito && (
+        <div 
+          className="animate-slide-up"
+          style={{
+            position: 'fixed',
+            bottom: '20px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            width: 'calc(100% - 32px)',
+            maxWidth: '500px',
+            zIndex: 80,
+            paddingBottom: 'env(safe-area-inset-bottom)'
+          }}
+        >
+          <button
+            onClick={() => setVerCarrito(true)}
+            style={{
+              width: '100%',
+              background: 'var(--text-primary)',
+              color: 'var(--bg-color)',
+              border: 'none',
+              borderRadius: '50px',
+              padding: '14px 22px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              boxShadow: '0 10px 30px rgba(0, 0, 0, 0.25)',
+              cursor: 'pointer'
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <span style={{
+                background: 'var(--accent-gold)',
+                color: 'white',
+                borderRadius: '50%',
+                width: '28px',
+                height: '28px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '13px',
+                fontWeight: 700
+              }}>
+                {totalItems}
+              </span>
+              <div style={{ textAlign: 'left' }}>
+                <p style={{ fontSize: '14px', fontWeight: 600, lineHeight: 1.1 }}>Enviar Pedido a Cocina</p>
+                <p style={{ fontSize: '11px', color: 'rgba(255, 255, 255, 0.7)' }}>Mesa {mesaNumero} • {carrito.length} ítems en marcha</p>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ fontSize: '16px', fontWeight: 700, color: 'var(--accent-gold)' }}>
+                ${totalCarrito.toLocaleString('es-AR')}
+              </span>
+              <ArrowRight size={18} />
+            </div>
+          </button>
+        </div>
+      )}
 
       {/* POPUP DE NOTAS */}
       {productoConNotaId !== null && (
@@ -1121,17 +1296,20 @@ export default function MesaClientePage() {
           display: 'flex',
           justifyContent: 'flex-end'
         }}>
-          <div style={{
-            background: 'var(--bg-color)',
-            width: '100%',
-            maxWidth: '420px',
-            height: '100%',
-            boxShadow: 'var(--shadow-medium)',
-            display: 'flex',
-            flexDirection: 'column',
-            padding: '20px',
-            position: 'relative'
-          }}>
+          <div 
+            className="mobile-drawer-modal"
+            style={{
+              background: 'var(--bg-color)',
+              width: '100%',
+              maxWidth: '420px',
+              height: '100%',
+              boxShadow: 'var(--shadow-medium)',
+              display: 'flex',
+              flexDirection: 'column',
+              padding: '20px',
+              position: 'relative'
+            }}
+          >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
               <div>
                 <h3 style={{ fontSize: '18px', fontWeight: 600 }}>Mi Pedido - Mesa {mesaNumero}</h3>
