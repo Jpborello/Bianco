@@ -1,17 +1,13 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { BRAND_CONFIG } from "../lib/brandConfig";
+import { UiProviders } from "../components/ui";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
+// Nota: la tipografía real del sitio (Outfit / Playfair Display) se carga
+// vía @import en globals.css y se aplica con --font-sans/--font-serif.
+// Antes acá también se cargaban las fuentes Geist de next/font/google,
+// pero nunca se usaban en ningún estilo — quedaban del boilerplate de
+// create-next-app y solo agregaban una descarga de red innecesaria.
 
 // Sin esto, algunos navegadores de celular renderizan la pagina con un
 // ancho "de escritorio" y despues la recortan o la muestran diminuta.
@@ -32,11 +28,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html
-      lang="es"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
-    >
-      <body className="min-h-full flex flex-col">{children}</body>
+    <html lang="es" className="h-full antialiased">
+      <body className="min-h-full flex flex-col">
+        <UiProviders>{children}</UiProviders>
+      </body>
     </html>
   );
 }

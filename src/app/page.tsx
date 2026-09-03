@@ -2,13 +2,34 @@
 
 import React, { useState, useEffect } from 'react';
 import Image from 'next/image';
+import Link from 'next/link';
 import { CATEGORIAS, PRODUCTOS_MOCK, Producto } from '../lib/mockData';
 import { getProductos, getCategorias, crearPedido } from '../lib/dbActions';
 import { supabase } from '../lib/supabase';
-import { ShoppingBag, Coffee, ArrowRight, Check, X, MapPin, Phone, User, Loader2, Sparkles, Search, Plus, Minus } from 'lucide-react';
+import {
+  ShoppingBag,
+  ArrowRight,
+  Check,
+  MapPin,
+  Phone,
+  User,
+  Sparkles,
+  Settings,
+} from 'lucide-react';
 import { BRAND_CONFIG } from '../lib/brandConfig';
+import { Button, useToast } from '../components/ui';
+import {
+  CategoryNav,
+  MenuSearchBar,
+  NoResultsState,
+  NotesModalShell,
+  ProductCard,
+  ProductGridSkeleton,
+} from '../components/menu';
 
 export default function Home() {
+  const toast = useToast();
+
   const [productos, setProductos] = useState<Producto[]>([]);
   const [categorias, setCategorias] = useState<string[]>([]);
   const [categoriaActiva, setCategoriaActiva] = useState('Todos');
@@ -65,7 +86,7 @@ export default function Home() {
         setCargando(false);
       }
     }
-    
+
     cargarDatos();
 
     // Escuchar actualizaciones de productos (cambios de stock en tiempo real)
@@ -115,7 +136,7 @@ export default function Home() {
   const enviarPedidoDelivery = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!nombre.trim() || !telefono.trim() || !direccion.trim()) {
-      alert('Por favor, completá todos los datos de envío.');
+      toast.show('Por favor, completá todos los datos de envío.', 'warning');
       return;
     }
 
@@ -128,7 +149,7 @@ export default function Home() {
     }));
 
     try {
-      const { data, error } = await crearPedido({
+      const { error } = await crearPedido({
         tipo: 'delivery',
         nombre_cliente: nombre,
         telefono: telefono,
@@ -139,15 +160,15 @@ export default function Home() {
 
       if (error) throw new Error(error);
 
-      alert(`¡Muchas gracias ${nombre}! Tu pedido a domicilio ha sido recibido. Nos comunicaremos a la brevedad al ${telefono} para coordinar la entrega.`);
+      toast.show(`¡Gracias ${nombre}! Tu pedido a domicilio fue recibido. Te contactamos al ${telefono} para coordinar la entrega.`, 'success');
       setCarrito([]);
       setVerCarrito(false);
       setPasoCheckout('carrito');
       setNombre('');
       setTelefono('');
       setDireccion('');
-    } catch (err: any) {
-      alert('Error al enviar el pedido: ' + err.message);
+    } catch (err) {
+      toast.show('Error al enviar el pedido: ' + (err as Error).message, 'error');
     } finally {
       setEnviandoPedido(false);
     }
@@ -155,8 +176,8 @@ export default function Home() {
 
   const productosFiltrados = productos.filter((p) => {
     const coincideCategoria = categoriaActiva === 'Todos' || p.categoria === categoriaActiva;
-    const coincideBusqueda = busqueda.trim() === '' || 
-      p.nombre.toLowerCase().includes(busqueda.toLowerCase()) || 
+    const coincideBusqueda = busqueda.trim() === '' ||
+      p.nombre.toLowerCase().includes(busqueda.toLowerCase()) ||
       p.descripcion.toLowerCase().includes(busqueda.toLowerCase());
     return coincideCategoria && coincideBusqueda;
   });
@@ -167,456 +188,137 @@ export default function Home() {
 
   const totalCarrito = carrito.reduce((sum, item) => sum + item.producto.precio * item.cantidad, 0);
   const totalItems = carrito.reduce((sum, item) => sum + item.cantidad, 0);
+  const productoEnNota = productos.find((p) => p.id === productoConNotaId);
 
   return (
-    <div className="main-container" style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', position: 'relative' }}>
-      
+    <div className="relative flex min-h-screen flex-col bg-cream">
       {/* HEADER PRINCIPAL */}
-      <header style={{
-        position: 'sticky',
-        top: 0,
-        zIndex: 50,
-        background: 'rgba(250, 249, 246, 0.85)',
-        backdropFilter: 'blur(12px)',
-        borderBottom: '1px solid var(--border-color)',
-        padding: '16px 24px',
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center'
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <div style={{ position: 'relative', width: 44, height: 44, borderRadius: '50%', overflow: 'hidden', border: '1px solid var(--border-color)' }}>
-            <Image 
-              src={BRAND_CONFIG.logoUrl} 
-              alt={`${BRAND_CONFIG.name} Logo`} 
-              fill
-              sizes="44px"
-              priority
-              style={{ objectFit: 'cover' }}
-            />
+      <header className="sticky top-0 z-50 flex items-center justify-between gap-3 border-b border-line bg-cream/85 px-4 py-3 backdrop-blur-md sm:px-6 sm:py-4">
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="relative h-10 w-10 shrink-0 overflow-hidden rounded-full border border-line sm:h-11 sm:w-11">
+            <Image src={BRAND_CONFIG.logoUrl} alt={`${BRAND_CONFIG.name} Logo`} fill sizes="44px" priority style={{ objectFit: 'cover' }} />
           </div>
-          <div>
-            <h1 style={{ fontSize: '18px', fontWeight: 600, letterSpacing: '1px', textTransform: 'uppercase' }}>{BRAND_CONFIG.name}</h1>
-            <p style={{ fontSize: '10px', color: 'var(--text-secondary)', letterSpacing: '2px', textTransform: 'uppercase', marginTop: '-2px' }}>{BRAND_CONFIG.subtitle}</p>
+          <div className="min-w-0">
+            <h1 className="truncate text-sm font-semibold uppercase tracking-wide text-ink sm:text-lg">{BRAND_CONFIG.name}</h1>
+            <p className="hidden truncate text-[10px] uppercase tracking-[0.2em] text-ink-soft sm:block">{BRAND_CONFIG.subtitle}</p>
           </div>
         </div>
 
-        <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-          {/* Link discreto a admin */}
-          <a href="/admin" style={{ fontSize: '12px', color: 'var(--accent-gold)', textDecoration: 'none', fontWeight: 500, marginRight: '8px' }}>
-            Panel de Control
-          </a>
-          
-          <button 
+        <div className="flex shrink-0 items-center gap-2">
+          {/* Acceso directo al panel (entra sin login: es una demo). */}
+          <Link
+            href="/admin"
+            title="Panel de Control"
+            className="inline-flex min-h-[44px] shrink-0 items-center justify-center gap-2 rounded-full border border-line bg-card px-3 text-xs font-semibold text-ink-soft transition-colors hover:bg-black/[0.03] sm:px-4 sm:text-sm"
+          >
+            <Settings size={16} />
+            <span className="hidden sm:inline">Panel de Control</span>
+          </Link>
+
+          <Button
+            variant="primary"
+            size="sm"
+            icon={ShoppingBag}
+            className="relative shrink-0 rounded-full"
+            aria-label={`Ver pedido${totalItems > 0 ? ` (${totalItems} productos)` : ''}`}
             onClick={() => {
               setPasoCheckout('carrito');
               setVerCarrito(true);
             }}
-            style={{
-              position: 'relative',
-              background: 'var(--text-primary)',
-              color: 'var(--bg-color)',
-              border: 'none',
-              padding: '10px 18px',
-              borderRadius: '30px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              cursor: 'pointer',
-              fontWeight: 500,
-              fontSize: '14px',
-              boxShadow: 'var(--shadow-soft)'
-            }}
           >
-            <ShoppingBag size={16} />
-            <span>Ver Pedido</span>
+            <span className="hidden sm:inline">Ver Pedido</span>
             {totalItems > 0 && (
-              <span style={{
-                background: 'var(--accent-gold)',
-                color: 'white',
-                borderRadius: '50%',
-                width: '20px',
-                height: '20px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: '11px',
-                fontWeight: 'bold'
-              }}>
+              <span className="ml-1 flex h-5 w-5 items-center justify-center rounded-full bg-gold text-[11px] font-bold text-white">
                 {totalItems}
               </span>
             )}
-          </button>
+          </Button>
         </div>
       </header>
 
       {/* HERO / PORTADA */}
-      <section style={{
-        padding: '50px 24px 30px',
-        textAlign: 'center',
-        background: 'linear-gradient(180deg, var(--accent-light-gold) 0%, rgba(250, 249, 246, 0) 100%)'
-      }}>
-        <span style={{
-          color: 'var(--accent-gold)',
-          textTransform: 'uppercase',
-          fontSize: '11px',
-          fontWeight: 600,
-          letterSpacing: '3px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: '6px',
-          marginBottom: '12px'
-        }}>
-          <Sparkles size={12} /> Menú & Pedidos a Domicilio
+      <section className="bg-gradient-to-b from-gold-light to-transparent px-4 pb-6 pt-8 text-center sm:px-6 sm:pt-12">
+        <span className="mb-3 inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.25em] text-gold">
+          <Sparkles size={12} /> Menú &amp; Pedidos a Domicilio
         </span>
-        <h2 style={{ fontSize: '34px', fontWeight: 700, lineHeight: 1.2, marginBottom: '16px' }} className="gold-gradient-text">
-          Auténtica Gastronomía Peruana,<br />
-          armonía y sazón tradicional.
+        <h2 className="gold-gradient-text mx-auto mb-3 max-w-xl text-2xl font-bold leading-tight sm:text-4xl">
+          Auténtica Gastronomía Peruana, armonía y sazón tradicional.
         </h2>
-        <p style={{ fontSize: '14px', color: 'var(--text-secondary)', maxWidth: '520px', margin: '0 auto 20px', lineHeight: 1.5 }}>
+        <p className="mx-auto mb-5 max-w-lg text-sm leading-relaxed text-ink-soft">
           Disfrutá del mejor Ceviche, Lomo Saltado, Causa Limeña, Ají de Gallina y Pisco Sour. Hacé tu pedido a domicilio o para retirar por el local.
         </p>
 
-        {/* BUSCADOR INSTANTÁNEO */}
-        <div style={{ maxWidth: '480px', margin: '0 auto 16px', position: 'relative' }}>
-          <Search size={18} style={{ position: 'absolute', left: '16px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }} />
-          <input
-            type="text"
-            value={busqueda}
-            onChange={(e) => setBusqueda(e.target.value)}
-            placeholder="Buscar ceviche, lomo saltado, pisco..."
-            style={{
-              width: '100%',
-              padding: '12px 16px 12px 44px',
-              borderRadius: '30px',
-              border: '1px solid var(--border-color)',
-              background: 'var(--card-bg)',
-              fontSize: '14px',
-              color: 'var(--text-primary)',
-              boxShadow: 'var(--shadow-soft)',
-              outline: 'none'
-            }}
-          />
-          {busqueda && (
-            <button
-              onClick={() => setBusqueda('')}
-              style={{
-                position: 'absolute',
-                right: '12px',
-                top: '50%',
-                transform: 'translateY(-50%)',
-                background: 'transparent',
-                border: 'none',
-                color: 'var(--text-secondary)',
-                cursor: 'pointer',
-                fontSize: '12px',
-                padding: '4px'
-              }}
-            >
-              <X size={16} />
-            </button>
-          )}
-        </div>
+        <MenuSearchBar
+          value={busqueda}
+          onChange={setBusqueda}
+          placeholder="Buscar ceviche, lomo saltado, pisco..."
+          className="mx-auto max-w-lg"
+        />
       </section>
 
       {/* CATEGORÍAS */}
-      <nav 
-        className="no-scrollbar"
-        style={{
-          display: 'flex',
-          gap: '8px',
-          padding: '0 24px 20px',
-          overflowX: 'auto',
-          whiteSpace: 'nowrap',
-          position: 'sticky',
-          top: '73px',
-          zIndex: 40,
-          background: 'var(--bg-color)'
-        }}
-      >
-        <button
-          onClick={() => setCategoriaActiva('Todos')}
-          style={{
-            padding: '10px 20px',
-            borderRadius: '25px',
-            border: '1px solid',
-            borderColor: categoriaActiva === 'Todos' ? 'var(--text-primary)' : 'var(--border-color)',
-            background: categoriaActiva === 'Todos' ? 'var(--text-primary)' : 'var(--card-bg)',
-            color: categoriaActiva === 'Todos' ? 'var(--bg-color)' : 'var(--text-primary)',
-            fontSize: '13px',
-            cursor: 'pointer',
-            fontWeight: 500,
-            boxShadow: 'var(--shadow-soft)'
-          }}
-        >
-          Todos
-        </button>
-        {categorias.map((cat) => (
-          <button
-            key={cat}
-            onClick={() => setCategoriaActiva(cat)}
-            style={{
-              padding: '10px 20px',
-              borderRadius: '25px',
-              border: '1px solid',
-              borderColor: categoriaActiva === cat ? 'var(--text-primary)' : 'var(--border-color)',
-              background: categoriaActiva === cat ? 'var(--text-primary)' : 'var(--card-bg)',
-              color: categoriaActiva === cat ? 'var(--bg-color)' : 'var(--text-primary)',
-              fontSize: '13px',
-              cursor: 'pointer',
-              fontWeight: 500,
-              boxShadow: 'var(--shadow-soft)'
-            }}
-          >
-            {cat}
-          </button>
-        ))}
-      </nav>
+      <div className="sticky top-[64px] z-40 bg-cream pb-3 pt-1 sm:top-[76px]">
+        <CategoryNav categorias={categorias} activa={categoriaActiva} onChange={setCategoriaActiva} />
+      </div>
 
       {/* MENÚ / GRILLA DE PRODUCTOS */}
-      <main style={{ padding: '0 24px 100px', flex: 1 }}>
+      <main className="flex-1 px-4 pb-28 sm:px-6">
         {cargando ? (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '200px', gap: '12px' }}>
-            <Loader2 className="animate-spin" style={{ color: 'var(--accent-gold)' }} size={32} />
-            <p style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>Cargando nuestra carta peruana...</p>
-          </div>
+          <ProductGridSkeleton />
+        ) : productosFiltrados.length === 0 ? (
+          <NoResultsState query={busqueda || categoriaActiva} />
         ) : (
           <div className="product-grid">
             {productosFiltrados.map((prod, index) => (
-              <div 
-                key={prod.id} 
-                className="product-card"
-                style={{
-                  background: 'var(--card-bg)',
-                  borderRadius: '16px',
-                  border: '1px solid var(--border-color)',
-                  overflow: 'hidden',
-                  boxShadow: 'var(--shadow-soft)',
-                  display: 'flex',
-                  flexDirection: 'column'
+              <ProductCard
+                key={prod.id}
+                producto={prod}
+                cantidadEnCarrito={getItemCantidad(prod.id)}
+                onAdd={() => agregarAlCarrito(prod)}
+                onRemove={() => eliminarDelCarrito(prod.id)}
+                onOpenNota={() => {
+                  setProductoConNotaId(prod.id);
+                  setNotaTemporal('');
                 }}
-              >
-                <div className="product-card-image-container" style={{ position: 'relative', width: '100%' }}>
-                  <Image 
-                    src={prod.imagenUrl} 
-                    alt={prod.nombre} 
-                    fill 
-                    sizes="(max-width: 640px) 50vw, (max-width: 768px) 100vw, 33vw"
-                    priority={index < 2}
-                    style={{ objectFit: 'cover' }}
-                  />
-                  {prod.esCafe && (
-                    <span style={{
-                      position: 'absolute',
-                      top: '12px',
-                      left: '12px',
-                      background: 'rgba(255, 255, 255, 0.95)',
-                      padding: '4px 8px',
-                      borderRadius: '20px',
-                      fontSize: '11px',
-                      fontWeight: 500,
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '4px',
-                      boxShadow: 'var(--shadow-soft)',
-                      color: 'var(--text-primary)'
-                    }}>
-                      <Coffee size={12} /> Café
-                    </span>
-                  )}
-                </div>
-                
-                <div className="product-card-info" style={{ padding: '16px', display: 'flex', flexDirection: 'column', flex: 1, justifyContent: 'space-between' }}>
-                  <div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
-                      <h3 className="product-card-title" style={{ fontSize: '17px', fontWeight: 600, fontFamily: 'var(--font-sans)', color: 'var(--text-primary)' }}>{prod.nombre}</h3>
-                      <span className="product-card-price" style={{ fontSize: '15px', fontWeight: 700, color: 'var(--accent-gold)' }}>${prod.precio.toLocaleString('es-AR')}</span>
-                    </div>
-                    <p className="product-card-desc" style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.4, marginBottom: '12px', height: '54px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {prod.descripcion}
-                    </p>
-
-                    {prod.stock !== undefined && prod.stock !== null && (
-                      <div style={{ marginBottom: '12px' }}>
-                        {prod.stock <= 0 ? (
-                          <span style={{ fontSize: '11px', fontWeight: 600, color: '#dc2626', background: 'rgba(220, 38, 38, 0.1)', padding: '4px 8px', borderRadius: '4px' }}>
-                            Sin Stock
-                          </span>
-                        ) : prod.stock <= (prod.stockMinimo ?? 0) ? (
-                          <span style={{ fontSize: '11px', fontWeight: 600, color: '#d97706', background: 'rgba(217, 119, 6, 0.1)', padding: '4px 8px', borderRadius: '4px' }}>
-                            ¡Últimos {prod.stock} disponibles!
-                          </span>
-                        ) : null}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="product-card-actions" style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                    <button
-                      onClick={() => {
-                        setProductoConNotaId(prod.id);
-                        setNotaTemporal('');
-                      }}
-                      disabled={prod.stock !== undefined && prod.stock !== null && prod.stock <= 0}
-                      title="Notas / Personalizar"
-                      style={{
-                        padding: '8px 10px',
-                        background: 'transparent',
-                        border: '1px solid var(--border-color)',
-                        borderRadius: '8px',
-                        fontSize: '11px',
-                        cursor: (prod.stock !== undefined && prod.stock !== null && prod.stock <= 0) ? 'not-allowed' : 'pointer',
-                        color: 'var(--text-secondary)',
-                        opacity: (prod.stock !== undefined && prod.stock !== null && prod.stock <= 0) ? 0.5 : 1
-                      }}
-                    >
-                      Nota
-                    </button>
-
-                    {getItemCantidad(prod.id) > 0 ? (
-                      <div style={{
-                        flex: 1,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        background: 'var(--accent-light-gold)',
-                        border: '1px solid var(--accent-gold)',
-                        borderRadius: '8px',
-                        padding: '4px 6px'
-                      }}>
-                        <button
-                          onClick={() => eliminarDelCarrito(prod.id)}
-                          style={{
-                            width: '26px',
-                            height: '26px',
-                            borderRadius: '6px',
-                            border: 'none',
-                            background: 'white',
-                            color: 'var(--text-primary)',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            cursor: 'pointer',
-                            boxShadow: 'var(--shadow-soft)'
-                          }}
-                        >
-                          <Minus size={14} />
-                        </button>
-                        <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)' }}>
-                          {getItemCantidad(prod.id)}
-                        </span>
-                        <button
-                          onClick={() => agregarAlCarrito(prod)}
-                          disabled={prod.stock !== undefined && prod.stock !== null && getItemCantidad(prod.id) >= prod.stock}
-                          style={{
-                            width: '26px',
-                            height: '26px',
-                            borderRadius: '6px',
-                            border: 'none',
-                            background: 'var(--accent-gold)',
-                            color: 'white',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            cursor: 'pointer',
-                            boxShadow: 'var(--shadow-soft)'
-                          }}
-                        >
-                          <Plus size={14} />
-                        </button>
-                      </div>
-                    ) : (
-                      <button
-                        onClick={() => agregarAlCarrito(prod)}
-                        disabled={prod.stock !== undefined && prod.stock !== null && prod.stock <= 0}
-                        style={{
-                          flex: 1,
-                          background: (prod.stock !== undefined && prod.stock !== null && prod.stock <= 0) ? 'var(--border-color)' : 'var(--text-primary)',
-                          color: (prod.stock !== undefined && prod.stock !== null && prod.stock <= 0) ? 'var(--text-secondary)' : 'var(--bg-color)',
-                          border: 'none',
-                          borderRadius: '8px',
-                          padding: '10px 8px',
-                          fontSize: '12px',
-                          fontWeight: 600,
-                          cursor: (prod.stock !== undefined && prod.stock !== null && prod.stock <= 0) ? 'not-allowed' : 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          gap: '6px'
-                        }}
-                      >
-                        <Plus size={14} />
-                        <span>{(prod.stock !== undefined && prod.stock !== null && prod.stock <= 0) ? 'Agotado' : 'Agregar'}</span>
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
+                priority={index < 2}
+              />
             ))}
           </div>
         )}
       </main>
 
-      {/* BARRA FLOTANTE DE CARRITO INFERIOR (MOBILE / DESKTOP STICKY) */}
-      {totalItems > 0 && !verCarrito && (
-        <div 
-          className="animate-slide-up"
-          style={{
-            position: 'fixed',
-            bottom: '20px',
-            left: '50%',
-            transform: 'translateX(-50%)',
-            width: 'calc(100% - 32px)',
-            maxWidth: '500px',
-            zIndex: 80,
-            paddingBottom: 'env(safe-area-inset-bottom)'
-          }}
+      {/* FOOTER DISCRETO CON ACCESO AL PANEL */}
+      <footer className="border-t border-line px-4 py-4 text-center sm:px-6">
+        <p className="text-xs text-ink-soft">{BRAND_CONFIG.address} · {BRAND_CONFIG.phone}</p>
+        <Link
+          href="/admin"
+          className="mt-2 inline-flex items-center gap-1 text-[11px] text-ink-soft/70 transition-colors hover:text-gold"
         >
+          <Settings size={12} /> Panel de administración
+        </Link>
+      </footer>
+
+      {/* BARRA FLOTANTE DE CARRITO */}
+      {totalItems > 0 && !verCarrito && (
+        <div className="animate-slide-up fixed inset-x-0 bottom-4 z-80 flex justify-center px-4" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
           <button
             onClick={() => {
               setPasoCheckout('carrito');
               setVerCarrito(true);
             }}
-            style={{
-              width: '100%',
-              background: 'var(--text-primary)',
-              color: 'var(--bg-color)',
-              border: 'none',
-              borderRadius: '50px',
-              padding: '14px 22px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              boxShadow: '0 10px 30px rgba(0, 0, 0, 0.25)',
-              cursor: 'pointer'
-            }}
+            className="flex w-full max-w-md items-center justify-between gap-3 rounded-full bg-ink px-5 py-3.5 text-cream shadow-float cursor-pointer"
           >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <span style={{
-                background: 'var(--accent-gold)',
-                color: 'white',
-                borderRadius: '50%',
-                width: '28px',
-                height: '28px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: '13px',
-                fontWeight: 700
-              }}>
+            <div className="flex items-center gap-3">
+              <span className="flex h-7 w-7 items-center justify-center rounded-full bg-gold text-[13px] font-bold text-white">
                 {totalItems}
               </span>
-              <div style={{ textAlign: 'left' }}>
-                <p style={{ fontSize: '14px', fontWeight: 600, lineHeight: 1.1 }}>Ver Pedido</p>
-                <p style={{ fontSize: '11px', color: 'rgba(255, 255, 255, 0.7)' }}>{carrito.length} productos seleccionados</p>
+              <div className="text-left">
+                <p className="text-sm font-semibold leading-tight">Ver Pedido</p>
+                <p className="text-[11px] text-cream/70">{carrito.length} productos seleccionados</p>
               </div>
             </div>
-
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span style={{ fontSize: '16px', fontWeight: 700, color: 'var(--accent-gold)' }}>
-                ${totalCarrito.toLocaleString('es-AR')}
-              </span>
+            <div className="flex items-center gap-2">
+              <span className="text-base font-bold text-gold">${totalCarrito.toLocaleString('es-AR')}</span>
               <ArrowRight size={18} />
             </div>
           </button>
@@ -624,370 +326,195 @@ export default function Home() {
       )}
 
       {/* POPUP DE NOTAS */}
-      {productoConNotaId !== null && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: 'rgba(0, 0, 0, 0.4)',
-          backdropFilter: 'blur(4px)',
-          zIndex: 100,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: '20px'
-        }}>
-          <div style={{
-            background: 'var(--card-bg)',
-            borderRadius: '16px',
-            width: '100%',
-            maxWidth: '400px',
-            padding: '24px',
-            boxShadow: 'var(--shadow-medium)'
-          }}>
-            <h4 style={{ fontSize: '18px', marginBottom: '12px' }}>Notas de preparación</h4>
-            <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '16px' }}>
-              Especificá si querés algún cambio (ej: leche descremada, sin azúcar, extra dulce).
-            </p>
-            <textarea
-              value={notaTemporal}
-              onChange={(e) => setNotaTemporal(e.target.value)}
-              placeholder="Ej: Con edulcorante, sin canela..."
-              style={{
-                width: '100%',
-                height: '80px',
-                borderRadius: '8px',
-                border: '1px solid var(--border-color)',
-                padding: '12px',
-                fontSize: '14px',
-                marginBottom: '20px',
-                fontFamily: 'var(--font-sans)',
-                resize: 'none'
+      <NotesModalShell
+        open={productoConNotaId !== null}
+        onClose={() => setProductoConNotaId(null)}
+        title="Notas de preparación"
+        size="sm"
+        footer={
+          <div className="flex gap-2">
+            <Button variant="outline" fullWidth onClick={() => setProductoConNotaId(null)}>
+              Cancelar
+            </Button>
+            <Button
+              variant="secondary"
+              fullWidth
+              onClick={() => {
+                if (productoEnNota) agregarAlCarrito(productoEnNota, notaTemporal);
+                setProductoConNotaId(null);
               }}
-            />
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <button
-                onClick={() => setProductoConNotaId(null)}
-                style={{
-                  flex: 1,
-                  background: 'transparent',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: '8px',
-                  padding: '12px',
-                  cursor: 'pointer'
-                }}
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={() => {
-                  const prod = productos.find(p => p.id === productoConNotaId);
-                  if (prod) agregarAlCarrito(prod, notaTemporal);
-                  setProductoConNotaId(null);
-                }}
-                style={{
-                  flex: 1,
-                  background: 'var(--accent-gold)',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '8px',
-                  padding: '12px',
-                  fontWeight: 600,
-                  cursor: 'pointer'
-                }}
-              >
-                Confirmar
-              </button>
-            </div>
+            >
+              Confirmar
+            </Button>
           </div>
-        </div>
-      )}
+        }
+      >
+        <p className="mb-3 text-sm text-ink-soft">
+          Especificá si querés algún cambio (ej: leche descremada, sin azúcar, extra dulce).
+        </p>
+        <textarea
+          value={notaTemporal}
+          onChange={(e) => setNotaTemporal(e.target.value)}
+          placeholder="Ej: Con edulcorante, sin canela..."
+          rows={3}
+          className="w-full resize-none rounded-lg border border-line p-3 text-sm outline-none font-sans"
+        />
+      </NotesModalShell>
 
-      {/* BOTTOM DRAWER DEL CARRITO */}
-      {verCarrito && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: 'rgba(0, 0, 0, 0.4)',
-          backdropFilter: 'blur(4px)',
-          zIndex: 90,
-          display: 'flex',
-          justifyContent: 'flex-end'
-        }}>
-          <div 
-            className="mobile-drawer-modal"
-            style={{
-              background: 'var(--bg-color)',
-              width: '100%',
-              maxWidth: '450px',
-              height: '100%',
-              boxShadow: 'var(--shadow-medium)',
-              display: 'flex',
-              flexDirection: 'column',
-              padding: '24px',
-              position: 'relative'
-            }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-              <h3 style={{ fontSize: '22px' }}>{pasoCheckout === 'carrito' ? 'Tu Pedido' : 'Datos del Envío'}</h3>
-              <button 
-                onClick={() => setVerCarrito(false)}
-                style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-primary)' }}
-              >
-                <X size={24} />
-              </button>
+      {/* DRAWER DEL CARRITO */}
+      <NotesModalShell
+        open={verCarrito}
+        onClose={() => setVerCarrito(false)}
+        variant="drawer"
+        title={pasoCheckout === 'carrito' ? 'Tu Pedido' : 'Datos del Envío'}
+        footer={
+          pasoCheckout === 'carrito' ? (
+            carrito.length > 0 && (
+              <div>
+                <div className="mb-5 flex justify-between">
+                  <span className="text-base text-ink-soft">Total</span>
+                  <span className="text-xl font-bold text-ink">${totalCarrito.toLocaleString('es-AR')}</span>
+                </div>
+                <Button variant="primary" fullWidth size="lg" icon={ArrowRight} iconPosition="right" onClick={() => setPasoCheckout('datos')}>
+                  Completar Envío
+                </Button>
+              </div>
+            )
+          ) : (
+            <div>
+              <div className="mb-4 flex justify-between">
+                <span className="text-sm text-ink-soft">Total a Abonar</span>
+                <span className="text-lg font-bold">${totalCarrito.toLocaleString('es-AR')}</span>
+              </div>
+              <div className="flex gap-2">
+                <Button type="button" variant="outline" className="flex-1" onClick={() => setPasoCheckout('carrito')}>
+                  Atrás
+                </Button>
+                <Button
+                  type="submit"
+                  form="delivery-form"
+                  variant="secondary"
+                  className="flex-[2]"
+                  loading={enviandoPedido}
+                  icon={Check}
+                  iconPosition="right"
+                >
+                  {enviandoPedido ? 'Enviando...' : 'Confirmar Pedido'}
+                </Button>
+              </div>
             </div>
-
-            {pasoCheckout === 'carrito' ? (
-              <>
-                {/* LISTA ITEMS */}
-                <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px', marginBottom: '24px' }}>
-                  {carrito.length === 0 ? (
-                    <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--text-secondary)' }}>
-                      <p>Tu carrito está vacío.</p>
-                      <p style={{ fontSize: '13px', marginTop: '4px' }}>Agregá alguna de nuestras delicias de autor.</p>
+          )
+        }
+      >
+        {pasoCheckout === 'carrito' ? (
+          <>
+            <div className="flex flex-col gap-4">
+              {carrito.length === 0 ? (
+                <div className="py-10 text-center text-ink-soft">
+                  <p>Tu carrito está vacío.</p>
+                  <p className="mt-1 text-sm">Agregá alguna de nuestras delicias de autor.</p>
+                </div>
+              ) : (
+                carrito.map((item, idx) => (
+                  <div key={idx} className="flex gap-3 border-b border-line pb-4">
+                    <div className="relative h-15 w-15 shrink-0 overflow-hidden rounded-lg">
+                      <Image src={item.producto.imagenUrl} alt={item.producto.nombre} fill sizes="60px" style={{ objectFit: 'cover' }} />
                     </div>
-                  ) : (
-                    carrito.map((item, idx) => (
-                      <div key={idx} style={{
-                        display: 'flex',
-                        gap: '12px',
-                        borderBottom: '1px solid var(--border-color)',
-                        paddingBottom: '16px'
-                      }}>
-                        <div style={{ position: 'relative', width: '60px', height: '60px', borderRadius: '8px', overflow: 'hidden' }}>
-                          <Image src={item.producto.imagenUrl} alt={item.producto.nombre} fill sizes="60px" style={{ objectFit: 'cover' }} />
-                        </div>
-                        <div style={{ flex: 1 }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                            <h4 style={{ fontSize: '15px', fontWeight: 600 }}>{item.producto.nombre}</h4>
-                            <span style={{ fontSize: '14px', fontWeight: 600 }}>${(item.producto.precio * item.cantidad).toLocaleString('es-AR')}</span>
-                          </div>
-                          {item.nota && (
-                            <p style={{ fontSize: '11px', color: 'var(--accent-gold)', marginTop: '2px', fontStyle: 'italic' }}>
-                              Nota: {item.nota}
-                            </p>
-                          )}
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '8px' }}>
-                            <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                              ${item.producto.precio.toLocaleString('es-AR')} c/u
-                            </span>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                              <button
-                                onClick={() => eliminarDelCarrito(item.producto.id, item.nota)}
-                                style={{
-                                  width: '24px',
-                                  height: '24px',
-                                  borderRadius: '50%',
-                                  border: '1px solid var(--border-color)',
-                                  background: 'transparent',
-                                  cursor: 'pointer',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center'
-                                }}
-                              >
-                                -
-                              </button>
-                              <span style={{ fontSize: '14px', fontWeight: 600 }}>{item.cantidad}</span>
-                              <button
-                                onClick={() => agregarAlCarrito(item.producto, item.nota)}
-                                style={{
-                                  width: '24px',
-                                  height: '24px',
-                                  borderRadius: '50%',
-                                  border: '1px solid var(--border-color)',
-                                  background: 'transparent',
-                                  cursor: 'pointer',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center'
-                                }}
-                              >
-                                +
-                              </button>
-                            </div>
-                          </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex justify-between gap-2">
+                        <h4 className="text-sm font-semibold text-ink">{item.producto.nombre}</h4>
+                        <span className="shrink-0 text-sm font-semibold">${(item.producto.precio * item.cantidad).toLocaleString('es-AR')}</span>
+                      </div>
+                      {item.nota && <p className="mt-0.5 text-xs italic text-gold">Nota: {item.nota}</p>}
+                      <div className="mt-2 flex items-center justify-between">
+                        <span className="text-xs text-ink-soft">${item.producto.precio.toLocaleString('es-AR')} c/u</span>
+                        <div className="flex items-center gap-2.5">
+                          <button
+                            onClick={() => eliminarDelCarrito(item.producto.id, item.nota)}
+                            aria-label={`Quitar uno de ${item.producto.nombre}`}
+                            className="flex h-6 w-6 items-center justify-center rounded-full border border-line text-sm cursor-pointer"
+                          >
+                            −
+                          </button>
+                          <span className="text-sm font-semibold">{item.cantidad}</span>
+                          <button
+                            onClick={() => agregarAlCarrito(item.producto, item.nota)}
+                            aria-label={`Agregar uno más de ${item.producto.nombre}`}
+                            className="flex h-6 w-6 items-center justify-center rounded-full border border-line text-sm cursor-pointer"
+                          >
+                            +
+                          </button>
                         </div>
                       </div>
-                    ))
-                  )}
-                </div>
-
-                {/* TOTAL Y CONTINUAR */}
-                {carrito.length > 0 && (
-                  <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '20px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px' }}>
-                      <span style={{ fontSize: '16px', color: 'var(--text-secondary)' }}>Total</span>
-                      <span style={{ fontSize: '22px', fontWeight: 700, color: 'var(--text-primary)' }}>
-                        ${totalCarrito.toLocaleString('es-AR')}
-                      </span>
-                    </div>
-                    <button
-                      onClick={() => setPasoCheckout('datos')}
-                      style={{
-                        width: '100%',
-                        background: 'var(--text-primary)',
-                        color: 'var(--bg-color)',
-                        border: 'none',
-                        borderRadius: '12px',
-                        padding: '16px',
-                        fontSize: '16px',
-                        fontWeight: 600,
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: '8px'
-                      }}
-                    >
-                      <span>Completar Envío</span>
-                      <ArrowRight size={18} />
-                    </button>
-                  </div>
-                )}
-              </>
-            ) : (
-              /* FORMULARIO DELIVERY */
-              <form onSubmit={enviarPedidoDelivery} style={{ display: 'flex', flexDirection: 'column', flex: 1, justifyContent: 'space-between' }}>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                    <label style={{ fontSize: '13px', fontWeight: 500, color: 'var(--text-secondary)' }}>Nombre Completo</label>
-                    <div style={{ position: 'relative' }}>
-                      <User size={16} style={{ position: 'absolute', left: '12px', top: '15px', color: 'var(--text-secondary)' }} />
-                      <input 
-                        type="text" 
-                        required
-                        value={nombre}
-                        onChange={(e) => setNombre(e.target.value)}
-                        placeholder="Ej: Sofía Rodriguez"
-                        style={{
-                          width: '100%',
-                          padding: '14px 14px 14px 40px',
-                          borderRadius: '8px',
-                          border: '1px solid var(--border-color)',
-                          background: 'var(--card-bg)',
-                          fontSize: '14px',
-                          fontFamily: 'var(--font-sans)'
-                        }}
-                      />
                     </div>
                   </div>
+                ))
+              )}
+            </div>
+          </>
+        ) : (
+          <form id="delivery-form" onSubmit={enviarPedidoDelivery}>
+            <div className="flex flex-col gap-4">
+              <Field label="Nombre Completo" icon={User}>
+                <input
+                  type="text"
+                  required
+                  value={nombre}
+                  onChange={(e) => setNombre(e.target.value)}
+                  placeholder="Ej: Sofía Rodriguez"
+                  className="w-full rounded-lg border border-line bg-card py-3.5 pl-10 pr-3 text-sm font-sans outline-none"
+                />
+              </Field>
 
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                    <label style={{ fontSize: '13px', fontWeight: 500, color: 'var(--text-secondary)' }}>Teléfono Celular</label>
-                    <div style={{ position: 'relative' }}>
-                      <Phone size={16} style={{ position: 'absolute', left: '12px', top: '15px', color: 'var(--text-secondary)' }} />
-                      <input 
-                        type="tel" 
-                        required
-                        value={telefono}
-                        onChange={(e) => setTelefono(e.target.value)}
-                        placeholder="Ej: +54 9 11 1234 5678"
-                        style={{
-                          width: '100%',
-                          padding: '14px 14px 14px 40px',
-                          borderRadius: '8px',
-                          border: '1px solid var(--border-color)',
-                          background: 'var(--card-bg)',
-                          fontSize: '14px',
-                          fontFamily: 'var(--font-sans)'
-                        }}
-                      />
-                    </div>
-                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Lo usaremos para coordinar la entrega y futuros sorteos exclusivos de {BRAND_CONFIG.name}.</span>
-                  </div>
+              <Field label="Teléfono Celular" icon={Phone} hint={`Lo usaremos para coordinar la entrega y futuros sorteos exclusivos de ${BRAND_CONFIG.name}.`}>
+                <input
+                  type="tel"
+                  required
+                  inputMode="tel"
+                  value={telefono}
+                  onChange={(e) => setTelefono(e.target.value)}
+                  placeholder="Ej: +54 9 11 1234 5678"
+                  className="w-full rounded-lg border border-line bg-card py-3.5 pl-10 pr-3 text-sm font-sans outline-none"
+                />
+              </Field>
 
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                    <label style={{ fontSize: '13px', fontWeight: 500, color: 'var(--text-secondary)' }}>Dirección de Entrega</label>
-                    <div style={{ position: 'relative' }}>
-                      <MapPin size={16} style={{ position: 'absolute', left: '12px', top: '15px', color: 'var(--text-secondary)' }} />
-                      <input 
-                        type="text" 
-                        required
-                        value={direccion}
-                        onChange={(e) => setDireccion(e.target.value)}
-                        placeholder="Ej: Av. Santa Fe 1234, 4° B"
-                        style={{
-                          width: '100%',
-                          padding: '14px 14px 14px 40px',
-                          borderRadius: '8px',
-                          border: '1px solid var(--border-color)',
-                          background: 'var(--card-bg)',
-                          fontSize: '14px',
-                          fontFamily: 'var(--font-sans)'
-                        }}
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '20px', marginTop: '24px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '16px' }}>
-                    <span style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>Total a Abonar</span>
-                    <span style={{ fontSize: '18px', fontWeight: 700 }}>${totalCarrito.toLocaleString('es-AR')}</span>
-                  </div>
-
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    <button
-                      type="button"
-                      onClick={() => setPasoCheckout('carrito')}
-                      style={{
-                        flex: 1,
-                        background: 'transparent',
-                        border: '1px solid var(--border-color)',
-                        borderRadius: '8px',
-                        padding: '14px',
-                        cursor: 'pointer',
-                        fontSize: '14px',
-                        color: 'var(--text-secondary)'
-                      }}
-                    >
-                      Atrás
-                    </button>
-                    <button
-                      type="submit"
-                      disabled={enviandoPedido}
-                      style={{
-                        flex: 2,
-                        background: 'var(--accent-gold)',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: '8px',
-                        padding: '14px',
-                        fontWeight: 600,
-                        cursor: 'pointer',
-                        fontSize: '14px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: '6px'
-                      }}
-                    >
-                      {enviandoPedido ? (
-                        <>
-                          <Loader2 className="animate-spin" size={16} />
-                          <span>Enviando...</span>
-                        </>
-                      ) : (
-                        <>
-                          <span>Confirmar Pedido</span>
-                          <Check size={16} />
-                        </>
-                      )}
-                    </button>
-                  </div>
-                </div>
-              </form>
-            )}
-          </div>
-        </div>
-      )}
+              <Field label="Dirección de Entrega" icon={MapPin}>
+                <input
+                  type="text"
+                  required
+                  value={direccion}
+                  onChange={(e) => setDireccion(e.target.value)}
+                  placeholder="Ej: Av. Santa Fe 1234, 4° B"
+                  className="w-full rounded-lg border border-line bg-card py-3.5 pl-10 pr-3 text-sm font-sans outline-none"
+                />
+              </Field>
+            </div>
+          </form>
+        )}
+      </NotesModalShell>
     </div>
+  );
+}
+
+function Field({
+  label,
+  icon: Icon,
+  hint,
+  children,
+}: {
+  label: string;
+  icon: React.ComponentType<{ size?: number; className?: string }>;
+  hint?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <label className="flex flex-col gap-1.5 text-left">
+      <span className="text-xs font-medium text-ink-soft">{label}</span>
+      <div className="relative">
+        <Icon size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-soft" />
+        {children}
+      </div>
+      {hint && <span className="text-[11px] leading-snug text-ink-soft">{hint}</span>}
+    </label>
   );
 }

@@ -1,24 +1,59 @@
 @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&display=swap');
+@import "./tailwind.generated.css";
 
+/*
+ * Sistema de tokens de diseño de Mixtura de Sabores.
+ *
+ * Se definen como CSS custom properties comunes (no dentro de un bloque
+ * @theme de Tailwind) para que funcionen SIEMPRE, compile o no compile
+ * Tailwind. Las utilidades (bg-cream, text-ink, border-line, etc.) viven
+ * ya compiladas en ./tailwind.generated.css y leen estas mismas variables.
+ */
 :root {
   /* Paleta Gastronómica Peruana Premium */
-  --bg-color: #FAF6F0; /* Crema artesanal cálido */
-  --card-bg: #FFFFFF;
-  --text-primary: #231E1B; /* Charcoal profundo */
-  --text-secondary: #655E57;
-  
-  --accent-gold: #D4AF37; /* Dorado Inca */
-  --accent-gold-hover: #B89628;
-  --accent-light-gold: #FDF6E3;
-  --accent-red: #9E2A2B; /* Rojo Terracota Peruano */
-  --border-color: #EAE2D8;
-  
-  --font-sans: 'Outfit', sans-serif;
-  --font-serif: 'Playfair Display', serif;
-  
-  --transition-smooth: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
-  --shadow-soft: 0 4px 20px rgba(35, 30, 27, 0.04);
-  --shadow-medium: 0 8px 30px rgba(212, 175, 55, 0.12);
+  --color-cream: #FAF6F0;
+  --color-card: #FFFFFF;
+  --color-ink: #231E1B;
+  --color-ink-soft: #655E57;
+
+  --color-gold: #D4AF37;
+  --color-gold-hover: #B89628;
+  --color-gold-light: #FDF6E3;
+  --color-terracotta: #9E2A2B;
+  --color-line: #EAE2D8;
+
+  --color-success: #2B9348;
+  --color-success-bg: #EEFCF4;
+  --color-warning: #D97706;
+  --color-warning-bg: #FEF3E2;
+  --color-danger: #DC2626;
+  --color-danger-bg: #FEECEC;
+  --color-info: #2563EB;
+  --color-info-bg: #EAF1FE;
+
+  --font-sans: 'Outfit', ui-sans-serif, system-ui, sans-serif;
+  --font-serif: 'Playfair Display', ui-serif, Georgia, serif;
+
+  --shadow-soft: 0 4px 20px rgba(35, 30, 27, 0.06);
+  --shadow-medium: 0 8px 30px rgba(212, 175, 55, 0.16);
+  --shadow-float: 0 10px 30px rgba(0, 0, 0, 0.22);
+
+  --radius-sm: 8px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
+  --radius-full: 999px;
+
+  /* Alias semánticos que usan los estilos propios de más abajo */
+  --bg-color: var(--color-cream);
+  --card-bg: var(--color-card);
+  --text-primary: var(--color-ink);
+  --text-secondary: var(--color-ink-soft);
+  --accent-gold: var(--color-gold);
+  --accent-gold-hover: var(--color-gold-hover);
+  --accent-light-gold: var(--color-gold-light);
+  --accent-red: var(--color-terracotta);
+  --border-color: var(--color-line);
+  --transition-smooth: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
 }
 
 .dark-theme {
@@ -32,8 +67,6 @@
 
 * {
   box-sizing: border-box;
-  padding: 0;
-  margin: 0;
 }
 
 body {
@@ -50,6 +83,18 @@ h1, h2, h3, h4, .font-serif {
   font-family: var(--font-serif);
 }
 
+/* Foco visible y consistente para navegación por teclado en toda la app */
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--accent-gold);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
 .glass {
   background: rgba(255, 255, 255, 0.82);
   backdrop-filter: blur(12px);
@@ -60,6 +105,7 @@ h1, h2, h3, h4, .font-serif {
 .gold-gradient-text {
   background: linear-gradient(135deg, var(--text-primary) 30%, var(--accent-gold) 100%);
   -webkit-background-clip: text;
+  background-clip: text;
   -webkit-text-fill-color: transparent;
 }
 
@@ -72,6 +118,14 @@ button:active, a.btn-active:active {
   transform: scale(0.97);
 }
 
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
 /* Ocultar barra de desplazamiento sin perder funcionalidad */
 .no-scrollbar::-webkit-scrollbar {
   display: none;
@@ -81,100 +135,102 @@ button:active, a.btn-active:active {
   scrollbar-width: none;
 }
 
+/* Grilla de productos: mobile-first, se agranda con el viewport */
 .product-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 24px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+@media (min-width: 480px) {
+  .product-grid { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; }
+}
+@media (min-width: 768px) {
+  .product-grid { grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 20px; }
+}
+@media (min-width: 1024px) {
+  .product-grid { gap: 24px; }
 }
 
 .product-card-image-container {
-  height: 200px;
+  position: relative;
+  width: 100%;
+  height: 130px;
+}
+@media (min-width: 480px) {
+  .product-card-image-container { height: 160px; }
+}
+@media (min-width: 768px) {
+  .product-card-image-container { height: 200px; }
 }
 
-/* Animaciones para Bottom Sheets y modales en mobile */
+/* Animaciones para Bottom Sheets, drawers y modales */
 @keyframes slideUpDrawer {
-  from {
-    transform: translateY(100%);
-    opacity: 0;
-  }
-  to {
-    transform: translateY(0);
-    opacity: 1;
-  }
+  from { transform: translateY(100%); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes slideInDrawer {
+  from { transform: translateX(100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+@keyframes fadeInScale {
+  from { transform: scale(0.96); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
 }
 
 @keyframes pulseGlow {
-  0%, 100% {
-    box-shadow: 0 0 0 0 rgba(212, 175, 55, 0.4);
-  }
-  50% {
-    box-shadow: 0 0 0 10px rgba(212, 175, 55, 0);
-  }
+  0%, 100% { box-shadow: 0 0 0 0 rgba(212, 175, 55, 0.4); }
+  50% { box-shadow: 0 0 0 10px rgba(212, 175, 55, 0); }
 }
 
-.animate-slide-up {
-  animation: slideUpDrawer 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+@keyframes toastIn {
+  from { transform: translateY(-8px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
 }
 
-.animate-pulse-glow {
-  animation: pulseGlow 2s infinite;
+@keyframes skeletonShimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
 }
 
-/* Mobile Responsiveness Rules */
+.animate-slide-up { animation: slideUpDrawer 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+.animate-slide-in { animation: slideInDrawer 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+.animate-fade-scale { animation: fadeInScale 0.2s ease-out forwards; }
+.animate-pulse-glow { animation: pulseGlow 2s infinite; }
+.animate-toast-in { animation: toastIn 0.25s ease-out forwards; }
+
+.skeleton {
+  background: linear-gradient(90deg, var(--border-color) 25%, var(--card-bg) 50%, var(--border-color) 75%);
+  background-size: 200% 100%;
+  animation: skeletonShimmer 1.4s ease-in-out infinite;
+}
+
+/* Drawer / bottom-sheet responsive: panel lateral en desktop, hoja inferior en mobile */
+.drawer-panel {
+  animation: slideInDrawer 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
 @media (max-width: 640px) {
-  .product-grid {
-    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)) !important;
-    gap: 10px !important;
-  }
-  .product-card {
-    border-radius: 16px !important;
-  }
-  .product-card-image-container {
-    height: 120px !important;
-  }
-  .product-card-info {
-    padding: 10px !important;
-  }
-  .product-card-title {
-    font-size: 14px !important;
-    line-height: 1.25 !important;
-  }
-  .product-card-price {
-    font-size: 13px !important;
-  }
-  .product-card-desc {
-    font-size: 11px !important;
-    height: 34px !important;
-    -webkit-line-clamp: 2 !important;
-    display: -webkit-box !important;
-    -webkit-box-orient: vertical !important;
-    overflow: hidden !important;
-    margin-bottom: 8px !important;
-  }
-  .product-card-actions {
-    gap: 4px !important;
-  }
-  .product-card-button-notes {
-    font-size: 11px !important;
-    padding: 9px 6px !important;
-  }
-  .product-card-button-add {
-    font-size: 11px !important;
-    padding: 9px 6px !important;
-  }
-
-  /* Modal de Carrito / Checkout en celulares como Bottom Sheet */
-  .mobile-drawer-modal {
+  .drawer-panel {
     position: fixed !important;
     bottom: 0 !important;
     left: 0 !important;
     right: 0 !important;
     top: auto !important;
-    max-height: 90vh !important;
+    max-height: 92vh !important;
+    width: 100% !important;
+    max-width: 100% !important;
     border-radius: 24px 24px 0 0 !important;
-    border-bottom: none !important;
     animation: slideUpDrawer 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards !important;
     padding-bottom: calc(16px + env(safe-area-inset-bottom)) !important;
   }
 }
 
+/* Utilidad para truncar descripciones a 2 líneas de forma consistente */
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+}

@@ -1,25 +1,21 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import Image from 'next/image';
 import { supabase } from '../../lib/supabase';
 import { BRAND_CONFIG } from '../../lib/brandConfig';
-import { 
-  getMesas, 
-  crearPedido, 
-  crearSolicitud, 
-  atenderSolicitud, 
-  liberarMesa, 
-  cambiarEstadoPedido, 
+import {
+  getMesas,
+  crearPedido,
+  atenderSolicitud,
+  liberarMesa,
+  cambiarEstadoPedido,
   seedDatabase,
   DbTable,
   DbOrder,
   DbRequest,
-  getProductos,
   crearProducto,
   actualizarProducto,
   eliminarProducto,
-  getCategorias,
   ocuparMesa,
   crearCategoria,
   actualizarCategoria,
@@ -32,50 +28,46 @@ import {
   DbProduct,
   DbCategory
 } from '../../lib/dbActions';
-import { 
-  Bell, 
-  Receipt, 
-  Check, 
-  RefreshCw, 
-  Trash2, 
-  QrCode, 
-  Database, 
-  ShoppingBag, 
-  Truck, 
-  Coffee, 
-  User, 
-  Phone, 
-  MapPin, 
+import {
+  Bell,
+  Receipt,
+  RefreshCw,
+  Trash2,
+  QrCode,
+  Database,
+  ShoppingBag,
+  Truck,
+  Coffee,
+  User,
+  Phone,
+  MapPin,
   Printer,
   Sparkles,
   CheckCircle,
-  Clock,
-  ChevronRight,
   TrendingUp,
   Loader2,
-  Lock,
   DollarSign,
   Calendar,
   BarChart3,
-  CreditCard,
-  FileText,
-  FileCheck,
-  Percent,
-  X,
-  Plus,
-  Minus
+  Pencil,
+  ImageOff
 } from 'lucide-react';
+import { Button, IconButton, Badge, EmptyState, Modal, useToast, useConfirm } from '../../components/ui';
+
+type TabId = 'monitoreo' | 'pedidos' | 'qrs' | 'metrics' | 'inventario' | 'facturacion';
 
 export default function AdminDashboard() {
-  // Autenticación de Roles (null | 'caja' | 'dueno')
-  const [rolActivo, setRolActivo] = useState<'caja' | 'dueno' | null>(null);
-  const [pinInput, setPinInput] = useState('');
-  const [loginError, setLoginError] = useState('');
-  const [solicitaPin, setSolicitaPin] = useState(false);
+  const toast = useToast();
+  const confirmDialog = useConfirm();
+
+  // Rol de la vista. DEMO: se entra directo al panel, sin login ni PIN.
+  // Arranca como "dueño" (acceso completo, incluye Métricas) y se puede
+  // cambiar a "caja" desde el header para mostrar la vista del personal.
+  const [rolActivo, setRolActivo] = useState<'caja' | 'dueno'>('dueno');
 
   // Navegación
-  const [tabActiva, setTabActiva] = useState<'monitoreo' | 'pedidos' | 'qrs' | 'metrics' | 'inventario' | 'facturacion'>('monitoreo');
-  
+  const [tabActiva, setTabActiva] = useState<TabId>('monitoreo');
+
   // Datos del Servidor
   const [mesas, setMesas] = useState<DbTable[]>([]);
   const [pedidos, setPedidos] = useState<DbOrder[]>([]);
@@ -114,7 +106,7 @@ export default function AdminDashboard() {
   const [manualCantidad, setManualCantidad] = useState(1);
   const [manualObservaciones, setManualObservaciones] = useState('');
   const [manualEnviarACocina, setManualEnviarACocina] = useState(true);
-  
+
   // Estados para el Modal de Cobro & Facturación
   const [mostrarModalFacturacion, setMostrarModalFacturacion] = useState(false);
   const [pedidoParaFacturar, setPedidoParaFacturar] = useState<DbOrder | null>(null);
@@ -131,12 +123,12 @@ export default function AdminDashboard() {
   const [facturaLiberarMesa, setFacturaLiberarMesa] = useState(true);
   const [procesandoFacturacion, setProcesandoFacturacion] = useState(false);
   const [ticketFacturaImprimir, setTicketFacturaImprimir] = useState<DbOrder | null>(null);
-  
+
   // Estados de interfaz
   const [cargando, setCargando] = useState(true);
   const [seeding, setSeeding] = useState(false);
   const [seedingMsg, setSeedingMsg] = useState('');
-  
+
   // Hostname para códigos QR
   const [hostUrl, setHostUrl] = useState('');
   const [mesaTicketImprimir, setMesaTicketImprimir] = useState<DbTable | null>(null);
@@ -148,25 +140,12 @@ export default function AdminDashboard() {
   useEffect(() => {
     if (typeof window !== 'undefined') {
       setHostUrl(window.location.origin);
+      // Se recuerda la última vista elegida (caja/dueño) sólo por comodidad;
+      // si no hay nada guardado entra como dueño.
       const savedRole = sessionStorage.getItem(`${BRAND_CONFIG.storagePrefix}_admin_rol`);
       if (savedRole === 'caja' || savedRole === 'dueno') {
-        setRolActivo(savedRole as any);
+        setRolActivo(savedRole);
       }
-    }
-  }, []);
-
-  // Ajustar temporalmente el color de fondo del body para el panel
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const originalBg = document.body.style.backgroundColor;
-      const originalColor = document.body.style.color;
-      document.body.style.backgroundColor = '#0d0d0d';
-      document.body.style.color = '#f5f5f5';
-
-      return () => {
-        document.body.style.backgroundColor = originalBg;
-        document.body.style.color = originalColor;
-      };
     }
   }, []);
 
@@ -181,7 +160,7 @@ export default function AdminDashboard() {
         .from('pedidos')
         .select('*, mesa:mesas(*), detalles:detalles_pedido(*, producto:productos(*))')
         .order('id', { ascending: false });
-      
+
       if (!pedError && dbPedidos) {
         setPedidos(dbPedidos as unknown as DbOrder[]);
       }
@@ -232,7 +211,7 @@ export default function AdminDashboard() {
       const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
       if (!AudioCtx) return;
       const ctx = new AudioCtx();
-      
+
       const osc1 = ctx.createOscillator();
       const gain1 = ctx.createGain();
       osc1.type = 'sine';
@@ -308,32 +287,26 @@ export default function AdminDashboard() {
     }
   }, [rolActivo]);
 
-  // Manejo de ingreso PIN de Dueño
-  const handlePinSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (pinInput === '1234') {
-      setRolActivo('dueno');
-      sessionStorage.setItem(`${BRAND_CONFIG.storagePrefix}_admin_rol`, 'dueno');
-      setLoginError('');
-      setPinInput('');
-    } else {
-      setLoginError('PIN Incorrecto de Administrador.');
-      setPinInput('');
+  // Cambiar entre la vista de Caja/Personal y la de Dueño (sin login: es una demo)
+  const cambiarRol = (rol: 'caja' | 'dueno') => {
+    setRolActivo(rol);
+    try {
+      sessionStorage.setItem(`${BRAND_CONFIG.storagePrefix}_admin_rol`, rol);
+    } catch (err) {
+      console.warn('sessionStorage no disponible:', err);
     }
-  };
-
-  // Salir de sesión del rol
-  const handleLogout = () => {
-    sessionStorage.removeItem(`${BRAND_CONFIG.storagePrefix}_admin_rol`);
-    setRolActivo(null);
-    setSolicitaPin(false);
+    // "Métricas" sólo existe para el dueño: si estaba parado ahí y pasa a
+    // caja, lo devolvemos al monitoreo para que no quede una pantalla vacía.
+    if (rol === 'caja') {
+      setTabActiva((actual) => (actual === 'metrics' ? 'monitoreo' : actual));
+    }
   };
 
   // Abrir Modal de Facturación para una Mesa
   const handleAbrirFacturacionMesa = (mesa: DbTable) => {
     const pedidosMesa = pedidos.filter(p => p.mesa_id === mesa.id && p.estado !== 'cancelado');
     if (pedidosMesa.length === 0) {
-      alert(`La Mesa ${mesa.numero} no tiene consumos registrados para cobrar.`);
+      toast.show(`La Mesa ${mesa.numero} no tiene consumos registrados para cobrar.`, 'error');
       return;
     }
     const principalOrder = pedidosMesa[0];
@@ -373,7 +346,7 @@ export default function AdminDashboard() {
     if (!pedidoParaFacturar) return;
 
     if (facturaTipoComprobante === 'factura_a' && (!facturaClienteCuit.trim() || !facturaClienteRazonSocial.trim())) {
-      alert('Para emitir Factura A debés completar el CUIT y la Razón Social.');
+      toast.show('Para emitir Factura A debés completar el CUIT y la Razón Social.', 'error');
       return;
     }
 
@@ -404,11 +377,11 @@ export default function AdminDashboard() {
 
       setMostrarModalFacturacion(false);
       setTicketFacturaImprimir(comprobante as DbOrder);
-      
+
       // Recargar mesas y pedidos desde Supabase
       const dbTables = await getMesas();
       setMesas(dbTables);
-      
+
       const { data: dbOrders } = await supabase
         .from('pedidos')
         .select('*, detalles:detalles_pedido(*, producto:productos(*)), mesa:mesas(*)')
@@ -416,7 +389,7 @@ export default function AdminDashboard() {
       if (dbOrders) setPedidos(dbOrders as unknown as DbOrder[]);
 
     } catch (err: any) {
-      alert('Error en el proceso de cobro: ' + err.message);
+      toast.show('Error en el proceso de cobro: ' + err.message, 'error');
     } finally {
       setProcesandoFacturacion(false);
     }
@@ -426,13 +399,13 @@ export default function AdminDashboard() {
   const handleProductoSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formNombre.trim() || !formPrecio.trim() || !formCategoriaId) {
-      alert('Por favor completa los campos requeridos.');
+      toast.show('Por favor completa los campos requeridos.', 'error');
       return;
     }
 
     const price = Number(formPrecio);
     if (isNaN(price) || price < 0) {
-      alert('El precio debe ser un número válido mayor o igual a 0.');
+      toast.show('El precio debe ser un número válido mayor o igual a 0.', 'error');
       return;
     }
 
@@ -463,12 +436,12 @@ export default function AdminDashboard() {
         setMostrarFormProducto(false);
         setProductoEditando(null);
         cargarDatosCompletos();
-        alert('Producto guardado exitosamente.');
+        toast.show('Producto guardado exitosamente.', 'success');
       } else {
-        alert('Error al guardar producto: ' + res.error);
+        toast.show('Error al guardar producto: ' + res.error, 'error');
       }
     } catch (err: any) {
-      alert('Error: ' + err.message);
+      toast.show('Error: ' + err.message, 'error');
     }
   };
 
@@ -479,23 +452,29 @@ export default function AdminDashboard() {
     if (res.success) {
       cargarDatosCompletos();
     } else {
-      alert('Error al agregar la mesa: ' + res.error);
+      toast.show('Error al agregar la mesa: ' + res.error, 'error');
     }
   };
 
   // Eliminar una mesa (solo si esta libre, para no perder una sesion en curso)
   const handleEliminarMesa = async (mesa: DbTable) => {
     if (mesa.estado !== 'libre') {
-      alert('Esta mesa está en uso. Liberala primero desde Monitoreo de Mesas antes de eliminarla.');
+      toast.show('Esta mesa está en uso. Liberala primero desde Monitoreo de Mesas antes de eliminarla.', 'error');
       return;
     }
-    if (!confirm(`¿Eliminar la Mesa ${mesa.numero}? Se borrará también su código QR.`)) return;
+    const ok = await confirmDialog({
+      title: `¿Eliminar la Mesa ${mesa.numero}?`,
+      description: 'Se borrará también su código QR.',
+      confirmLabel: 'Eliminar',
+      tone: 'danger',
+    });
+    if (!ok) return;
 
     const res = await eliminarMesa(mesa.id);
     if (res.success) {
       cargarDatosCompletos();
     } else {
-      alert('Error al eliminar la mesa: ' + res.error);
+      toast.show('Error al eliminar la mesa: ' + res.error, 'error');
     }
   };
 
@@ -531,7 +510,7 @@ export default function AdminDashboard() {
       setNuevaCategoriaNombre('');
       cargarDatosCompletos();
     } else {
-      alert('Error al crear la categoría: ' + res.error);
+      toast.show('Error al crear la categoría: ' + res.error, 'error');
     }
   };
 
@@ -544,19 +523,90 @@ export default function AdminDashboard() {
       setCategoriaEditandoNombre('');
       cargarDatosCompletos();
     } else {
-      alert('Error al renombrar la categoría: ' + res.error);
+      toast.show('Error al renombrar la categoría: ' + res.error, 'error');
     }
   };
 
   // Eliminar una categoría (bloqueado si tiene productos asociados)
   const handleEliminarCategoria = async (cat: DbCategory) => {
-    if (!confirm(`¿Eliminar la categoría "${cat.nombre}"?`)) return;
+    const ok = await confirmDialog({
+      title: `¿Eliminar la categoría "${cat.nombre}"?`,
+      confirmLabel: 'Eliminar',
+      tone: 'danger',
+    });
+    if (!ok) return;
     const res = await eliminarCategoria(cat.id);
     if (res.success) {
       cargarDatosCompletos();
     } else {
-      alert(res.error);
+      toast.show(res.error || 'No se pudo eliminar la categoría.', 'error');
     }
+  };
+
+  // Eliminar un producto del catálogo
+  const handleEliminarProducto = async (prod: DbProduct) => {
+    const ok = await confirmDialog({
+      title: `¿Eliminar el producto "${prod.nombre}"?`,
+      description: 'Esta acción no se puede deshacer.',
+      confirmLabel: 'Eliminar',
+      tone: 'danger',
+    });
+    if (!ok) return;
+    const res = await eliminarProducto(prod.id);
+    if (res.success) {
+      cargarDatosCompletos();
+    } else {
+      toast.show('Error al eliminar: ' + res.error, 'error');
+    }
+  };
+
+  // Abrir el formulario de edición de un producto existente, precargando sus datos.
+  const abrirEdicionProducto = (prod: DbProduct) => {
+    setProductoEditando(prod);
+    setFormNombre(prod.nombre);
+    setFormDescripcion(prod.descripcion || '');
+    setFormPrecio(prod.precio.toString());
+    setFormImagenUrl(prod.imagen_url || '');
+    setFormCategoriaId(prod.categoria_id?.toString() || '');
+    setFormStock(prod.stock !== null ? prod.stock.toString() : '');
+    setFormStockMinimo((prod.stock_minimo ?? 2).toString());
+    setFormEsCafe(prod.es_cafe);
+    setFormDisponible(prod.disponible);
+    setErrorSubidaImagen('');
+    setMostrarFormProducto(true);
+  };
+
+  // Agregar un ítem temporal a la lista de consumo manual
+  const handleAgregarItemConsumoManual = () => {
+    if (!manualProductoSeleccionadoId) {
+      toast.show('Seleccioná un producto.', 'error');
+      return;
+    }
+    const prod = productosList.find(p => p.id === Number(manualProductoSeleccionadoId));
+    if (!prod) return;
+
+    // Validar stock local antes de agregar a la lista temporal
+    if (prod.stock !== null && prod.stock < manualCantidad) {
+      toast.show(`No hay stock suficiente para ${prod.nombre}. Disponible: ${prod.stock} unidades.`, 'error');
+      return;
+    }
+
+    // Agregar
+    setItemsConsumoManual(prev => {
+      const existe = prev.find(item => item.producto.id === prod.id && item.observaciones === manualObservaciones);
+      if (existe) {
+        return prev.map(item =>
+          item.producto.id === prod.id && item.observaciones === manualObservaciones
+            ? { ...item, cantidad: item.cantidad + manualCantidad }
+            : item
+        );
+      }
+      return [...prev, { producto: prod, cantidad: manualCantidad, observaciones: manualObservaciones || undefined }];
+    });
+
+    // Limpiar campos temporales
+    setManualCantidad(1);
+    setManualObservaciones('');
   };
 
   // Guardar un pedido manual desde caja/monitoreo de mesas
@@ -566,7 +616,7 @@ export default function AdminDashboard() {
     try {
       let activeNombre = mesaConsumoManual.cliente_nombre;
       let activeTelefono = mesaConsumoManual.cliente_telefono;
-      
+
       // A. Si la mesa está libre, ocuparla automáticamente en Supabase
       if (mesaConsumoManual.estado === 'libre') {
         activeNombre = 'Mesa (Manual)';
@@ -600,6 +650,7 @@ export default function AdminDashboard() {
       }
 
       // Cerrar modal y limpiar
+      const numeroMesa = mesaConsumoManual.numero;
       setMostrarModalConsumoManual(false);
       setMesaConsumoManual(null);
       setItemsConsumoManual([]);
@@ -607,10 +658,10 @@ export default function AdminDashboard() {
       setManualCantidad(1);
       setManualObservaciones('');
       cargarDatosCompletos();
-      alert('Consumo agregado exitosamente a la mesa ' + mesaConsumoManual.numero);
+      toast.show('Consumo agregado exitosamente a la mesa ' + numeroMesa, 'success');
     } catch (err: any) {
       console.error('Error al confirmar consumo manual:', err);
-      alert('Error: ' + err.message);
+      toast.show('Error: ' + err.message, 'error');
     }
   };
 
@@ -643,11 +694,36 @@ export default function AdminDashboard() {
     }
   };
 
+  // Pedir confirmación y liberar una mesa (usado desde Monitoreo)
+  const handleConfirmarLiberarMesa = async (mesa: DbTable) => {
+    const ok = await confirmDialog({
+      title: `¿Liberar la Mesa ${mesa.numero}?`,
+      description: 'Esto borrará los consumos de la sesión actual.',
+      confirmLabel: 'Liberar',
+      tone: 'danger',
+    });
+    if (ok) {
+      handleLiberarMesa(mesa.id);
+    }
+  };
+
   // Actualizar estado de pedido
   const handleEstadoPedido = async (pedidoId: number, estado: string) => {
     const ok = await cambiarEstadoPedido(pedidoId, estado);
     if (ok) {
       cargarDatosCompletos();
+    }
+  };
+
+  // Pedir confirmación y cancelar un pedido (usado desde Pedidos)
+  const handleConfirmarCancelarPedido = async (pedidoId: number) => {
+    const ok = await confirmDialog({
+      title: '¿Desea cancelar este pedido?',
+      confirmLabel: 'Sí, cancelar',
+      tone: 'danger',
+    });
+    if (ok) {
+      handleEstadoPedido(pedidoId, 'cancelado');
     }
   };
 
@@ -660,23 +736,23 @@ export default function AdminDashboard() {
   const pedidosCompletados = pedidos.filter(p => ['entregado', 'cancelado'].includes(p.estado));
 
   // Preparar consumos consolidados para ticket
-  const pedidosMesaImprimir = mesaTicketImprimir && mesaTicketImprimir.ocupada_desde 
-    ? pedidos.filter(p => 
-        p.mesa_id === mesaTicketImprimir.id && 
-        p.estado !== 'cancelado' && 
+  const pedidosMesaImprimir = mesaTicketImprimir && mesaTicketImprimir.ocupada_desde
+    ? pedidos.filter(p =>
+        p.mesa_id === mesaTicketImprimir.id &&
+        p.estado !== 'cancelado' &&
         new Date(p.created_at) >= new Date(mesaTicketImprimir.ocupada_desde!)
       )
     : [];
 
   const itemsImprimir = pedidosMesaImprimir.flatMap(p => p.detalles || []);
-  
+
   interface ItemConsolidado {
     nombre: string;
     cantidad: number;
     precioUnitario: number;
     observaciones?: string;
   }
-  
+
   const consumosConsolidados: ItemConsolidado[] = [];
   itemsImprimir.forEach(det => {
     const prodNombre = det.producto?.nombre || 'Producto';
@@ -699,13 +775,13 @@ export default function AdminDashboard() {
   // ================= CÁLCULO DE MÉTRICAS (DUEÑO) =================
   const hoy = new Date();
   const inicioHoy = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate());
-  
+
   // Calcular Lunes de la semana en curso
   const inicioSemana = new Date(inicioHoy);
   const diaSemana = inicioSemana.getDay();
   const diff = inicioSemana.getDate() - diaSemana + (diaSemana === 0 ? -6 : 1);
   inicioSemana.setDate(diff);
-  
+
   const inicioMes = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
 
   // Totales de facturación
@@ -723,7 +799,7 @@ export default function AdminDashboard() {
 
   // Rotación de Productos e Infusiones
   const productSalesMap: { [nombre: string]: { cantidad: number; total: number; esCafe: boolean } } = {};
-  
+
   pedidos
     .filter(p => p.estado !== 'cancelado')
     .forEach(p => {
@@ -779,2054 +855,1237 @@ export default function AdminDashboard() {
   const topDay = topDayArray[0]?.[1] > 0 ? topDayArray[0] : ['Sin datos', 0];
   const topHour = topHourArray[0]?.[1] > 0 ? topHourArray[0] : ['Sin datos', 0];
 
-  // ================= PANTALLA LOGIN DE ACCESO =================
-  if (!rolActivo) {
-    return (
-      <div style={{
-        display: 'flex',
-        flexDirection: 'column',
-        minHeight: '100vh',
-        background: '#0d0d0d',
-        color: '#f5f5f5',
-        justifyContent: 'center',
-        alignItems: 'center',
-        padding: '24px',
-        fontFamily: 'var(--font-sans)'
-      }}>
-        <div style={{
-          background: '#161616',
-          border: '1px solid #222',
-          borderRadius: '0px', // Bordes completamente rectos
-          width: '100%',
-          maxWidth: '420px',
-          padding: '36px', // Padding generoso premium
-          boxShadow: '0 4px 30px rgba(0, 0, 0, 0.5)',
-          textAlign: 'center'
-        }}>
-          <span style={{
-            fontSize: '11px',
-            color: 'var(--accent-gold)',
-            textTransform: 'uppercase',
-            letterSpacing: '3px',
-            fontWeight: 600,
-            display: 'block',
-            marginBottom: '8px'
-          }}>{BRAND_CONFIG.fullName.toUpperCase()}</span>
-          
-          <h2 style={{ fontSize: '24px', fontWeight: 400, letterSpacing: '0.5px', marginBottom: '28px', textTransform: 'uppercase' }}>
-            Control de Acceso
-          </h2>
+  // ================= HELPERS DE PRESENTACIÓN (sólo UI, no lógica de negocio) =================
+  const mesaEstadoInfo = (estado: string): { label: string; tone: 'neutral' | 'warning' | 'success' | 'gold' } => {
+    if (estado === 'libre') return { label: 'Libre', tone: 'neutral' };
+    if (estado === 'esperando_pedido') return { label: 'En Cocina', tone: 'warning' };
+    if (estado === 'atendida') return { label: 'Atendida', tone: 'success' };
+    return { label: 'Ocupada', tone: 'gold' };
+  };
 
-          {!solicitaPin ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              <button
-                onClick={() => {
-                  setRolActivo('caja');
-                  sessionStorage.setItem(`${BRAND_CONFIG.storagePrefix}_admin_rol`, 'caja');
-                }}
-                style={{
-                  background: '#222',
-                  border: '1px solid #333',
-                  color: 'white',
-                  padding: '16px',
-                  borderRadius: '0px',
-                  fontSize: '14px',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  letterSpacing: '1px',
-                  textTransform: 'uppercase',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '8px'
-                }}
-              >
-                <ShoppingBag size={16} />
-                <span>Ingresar como Caja / Personal</span>
-              </button>
+  const NAV_ITEMS: { id: TabId; label: string; icon: React.ComponentType<{ size?: number }>; visible: boolean }[] = [
+    { id: 'monitoreo', label: 'Monitoreo de Mesas', icon: Coffee, visible: true },
+    { id: 'pedidos', label: 'Pedidos y Delivery', icon: ShoppingBag, visible: true },
+    { id: 'facturacion', label: 'Facturación & Caja', icon: Receipt, visible: true },
+    { id: 'qrs', label: 'Códigos QR', icon: QrCode, visible: true },
+    { id: 'metrics', label: 'Métricas de Venta', icon: BarChart3, visible: rolActivo === 'dueno' },
+    { id: 'inventario', label: 'Inventario y Productos', icon: Database, visible: true },
+  ];
+  const visibleNavItems = NAV_ITEMS.filter(t => t.visible);
 
-              <button
-                onClick={() => setSolicitaPin(true)}
-                style={{
-                  background: 'var(--accent-gold)',
-                  border: 'none',
-                  color: '#121212',
-                  padding: '16px',
-                  borderRadius: '0px',
-                  fontSize: '14px',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  letterSpacing: '1px',
-                  textTransform: 'uppercase',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '8px'
-                }}
-              >
-                <Lock size={16} />
-                <span>Acceso Dueño / Admin</span>
-              </button>
-            </div>
-          ) : (
-            <form onSubmit={handlePinSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '20px', textAlign: 'left' }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                <label style={{ fontSize: '12px', fontWeight: 600, letterSpacing: '1px', textTransform: 'uppercase', color: '#a0a0a0' }}>
-                  Código PIN de Administrador
-                </label>
-                <input 
-                  type="password"
-                  required
-                  value={pinInput}
-                  onChange={(e) => setPinInput(e.target.value)}
-                  placeholder="••••"
-                  maxLength={4}
-                  style={{
-                    width: '100%',
-                    padding: '14px',
-                    borderRadius: '0px',
-                    border: '1px solid #333',
-                    background: '#0d0d0d',
-                    color: 'white',
-                    fontSize: '18px',
-                    textAlign: 'center',
-                    letterSpacing: '8px'
-                  }}
-                  autoFocus
-                />
-              </div>
-
-              {loginError && (
-                <p style={{ color: '#ff4d4d', fontSize: '12px', textAlign: 'center', margin: '4px 0 0' }}>{loginError}</p>
-              )}
-
-              <div style={{ display: 'flex', gap: '10px', marginTop: '12px' }}>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSolicitaPin(false);
-                    setLoginError('');
-                  }}
-                  style={{
-                    flex: 1,
-                    background: '#222',
-                    border: '1px solid #333',
-                    color: 'white',
-                    padding: '14px',
-                    borderRadius: '0px',
-                    fontSize: '12px',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    textTransform: 'uppercase'
-                  }}
-                >
-                  Volver
-                </button>
-                <button
-                  type="submit"
-                  style={{
-                    flex: 2,
-                    background: 'var(--accent-gold)',
-                    border: 'none',
-                    color: '#121212',
-                    padding: '14px',
-                    borderRadius: '0px',
-                    fontSize: '12px',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    textTransform: 'uppercase'
-                  }}
-                >
-                  Confirmar PIN
-                </button>
-              </div>
-            </form>
-          )}
-        </div>
-      </div>
-    );
-  }
+  const hayTicketAbierto = !!(mesaTicketImprimir || ticketFacturaImprimir);
+  const llamadosCount = solicitudes.filter(s => s.tipo === 'llamar_mozo').length;
+  const cuentasCount = solicitudes.filter(s => s.tipo === 'pedir_cuenta').length;
 
   // ================= PANTALLA PRINCIPAL ADMIN =================
   return (
-    <div style={{
-      display: 'flex',
-      flexDirection: 'column',
-      minHeight: '100vh',
-      background: '#0d0d0d',
-      color: '#f5f5f5',
-      fontFamily: 'var(--font-sans)',
-      paddingBottom: '40px'
-    }} className={`admin-dashboard-page ${mesaTicketImprimir ? 'no-print' : ''}`}>
-      
-      {/* HEADER DE ADMINISTRACIÓN */}
-      <header style={{
-        background: '#161616',
-        borderBottom: '1px solid #222',
-        padding: '16px 32px',
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        position: 'sticky',
-        top: 0,
-        zIndex: 40
-      }} className="no-print admin-header">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <div style={{
-            background: 'var(--accent-gold)',
-            color: '#121212',
-            padding: '10px 14px',
-            borderRadius: '0px', // Bordes rectos
-            fontWeight: 'bold',
-            fontSize: '16px',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            letterSpacing: '1px'
-          }}>
-            <Sparkles size={16} />
-            <span>{BRAND_CONFIG.name.toUpperCase()}</span>
-          </div>
-          <div>
-            <h1 style={{ fontSize: '17px', fontWeight: 500, letterSpacing: '0.5px', textTransform: 'uppercase' }}>
-              Control y Monitoreo {rolActivo === 'dueno' ? '(Dueño)' : '(Caja)'}
-            </h1>
-            <p style={{ fontSize: '11px', color: '#a0a0a0' }}>Actualizaciones en tiempo real activas</p>
-          </div>
-        </div>
-
-        {/* CONTADORES RÁPIDOS Y LOGOUT */}
-        <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }} className="admin-header-controls">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#222', padding: '6px 14px', borderRadius: '0px', border: '1px solid #333' }}>
-            <Bell size={14} style={{ color: 'var(--accent-gold)' }} />
-            <span style={{ fontSize: '12px' }}>Llamados: <b>{solicitudes.filter(s => s.tipo === 'llamar_mozo').length}</b></span>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#222', padding: '6px 14px', borderRadius: '0px', border: '1px solid #333' }}>
-            <Receipt size={14} style={{ color: '#2b9348' }} />
-            <span style={{ fontSize: '12px' }}>Cuentas: <b>{solicitudes.filter(s => s.tipo === 'pedir_cuenta').length}</b></span>
-          </div>
-          <button 
-            onClick={cargarDatosCompletos} 
-            style={{
-              background: '#262626',
-              border: '1px solid #333',
-              borderRadius: '0px',
-              padding: '8px 12px',
-              cursor: 'pointer',
-              color: '#f5f5f5',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center'
-            }}
-          >
-            <RefreshCw size={14} />
-          </button>
-          
-          <button 
-            onClick={handleLogout}
-            style={{
-              background: 'transparent',
-              border: '1px solid #ff4d4d',
-              color: '#ff4d4d',
-              borderRadius: '0px',
-              padding: '8px 14px',
-              fontSize: '12px',
-              fontWeight: 600,
-              cursor: 'pointer',
-              textTransform: 'uppercase'
-            }}
-          >
-            Cerrar Sesión
-          </button>
-        </div>
-      </header>
-
-      {/* SUB-HEADER / MENÚ DE TABS */}
-      <nav style={{
-        background: '#121212',
-        borderBottom: '1px solid #222',
-        padding: '0 24px',
-        display: 'flex',
-        gap: '24px',
-        overflowX: 'auto',
-        whiteSpace: 'nowrap',
-        scrollbarWidth: 'none'
-      }} className="no-print admin-nav-scroll">
-        {[
-          { id: 'monitoreo', label: 'Monitoreo de Mesas', icon: Coffee, visible: true },
-          { id: 'pedidos', label: 'Pedidos y Delivery', icon: ShoppingBag, visible: true },
-          { id: 'facturacion', label: 'Facturación & Caja', icon: Receipt, visible: true },
-          { id: 'qrs', label: 'Códigos QR', icon: QrCode, visible: true },
-          { id: 'metrics', label: 'Métricas de Venta', icon: BarChart3, visible: rolActivo === 'dueno' },
-          { id: 'inventario', label: 'Inventario y Productos', icon: Database, visible: true }
-        ].filter(t => t.visible).map(tab => {
-          const Icon = tab.icon;
-          const activo = tabActiva === tab.id;
-          return (
-            <button
-              key={tab.id}
-              onClick={() => setTabActiva(tab.id as any)}
-              style={{
-                background: 'transparent',
-                border: 'none',
-                borderBottom: activo ? '3px solid var(--accent-gold)' : '3px solid transparent',
-                padding: '16px 8px',
-                color: activo ? 'var(--accent-gold)' : '#a0a0a0',
-                fontWeight: activo ? 600 : 500,
-                fontSize: '13px',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                borderRadius: 0,
-                textTransform: 'uppercase',
-                letterSpacing: '0.5px'
-              }}
-            >
-              <Icon size={14} />
-              <span>{tab.label}</span>
-            </button>
-          );
-        })}
-      </nav>
-
-      {/* CONTENIDO PRINCIPAL */}
-      <main style={{ padding: '32px' }}>
-        
-        {/* SECCIÓN SEEDING */}
-        {seedingMsg && (
-          <div style={{
-            background: 'var(--accent-light-gold)',
-            color: '#121212',
-            padding: '16px 24px',
-            borderRadius: '0px', // Sin redondeados
-            border: '1px solid var(--accent-gold)',
-            marginBottom: '24px',
-            fontWeight: 500,
-            fontSize: '13px',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '12px'
-          }}>
-            {seeding ? <Loader2 className="animate-spin" size={18} /> : <CheckCircle size={18} />}
-            <span>{seedingMsg}</span>
-          </div>
-        )}
-
-        {/* 1. MONITOREO DE MESAS */}
-        {tabActiva === 'monitoreo' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h2 style={{ fontSize: '18px', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Mesas Activas (1 a 10)</h2>
-              <p style={{ fontSize: '12px', color: '#a0a0a0' }}>Haz clic en Liberar para desocupar la mesa y cerrar su sesión.</p>
+    <div className="min-h-screen flex flex-col bg-cream text-ink">
+      <div className={`flex flex-col flex-1 min-h-screen ${hayTicketAbierto ? 'no-print' : ''}`}>
+        {/* HEADER DE ADMINISTRACIÓN */}
+        <header className="no-print sticky top-0 z-40 bg-ink text-cream border-b border-white/10 px-4 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="flex items-center gap-2 bg-gold text-ink rounded-md px-3 py-2 font-bold text-sm tracking-wide shrink-0">
+              <Sparkles size={16} />
+              <span className="hidden sm:inline">{BRAND_CONFIG.name.toUpperCase()}</span>
             </div>
+            <div className="min-w-0">
+              <h1 className="font-serif text-sm sm:text-base font-semibold uppercase tracking-wide truncate">
+                Control y Monitoreo {rolActivo === 'dueno' ? '(Dueño)' : '(Caja)'}
+              </h1>
+              <p className="text-[11px] text-cream/55">Actualizaciones en tiempo real activas</p>
+            </div>
+          </div>
 
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
-              gap: '24px'
-            }}>
-              {mesas.length === 0 ? (
-                <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: '60px', border: '1px dashed #333', borderRadius: '0px', color: '#a0a0a0' }}>
-                  <Database size={32} style={{ marginBottom: '12px', color: '#555' }} />
-                  <p>No se encontraron mesas cargadas en la base de datos.</p>
-                  <p style={{ fontSize: '13px', marginTop: '6px' }}>Ve a la pestaña "Base de Datos" para inicializarlas.</p>
+          {/* CONTADORES RÁPIDOS Y LOGOUT */}
+          <div className="flex gap-2 items-center flex-wrap">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1.5 text-xs">
+              <Bell size={13} className="text-gold" /> Llamados: <b>{llamadosCount}</b>
+            </span>
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1.5 text-xs">
+              <Receipt size={13} className="text-success" /> Cuentas: <b>{cuentasCount}</b>
+            </span>
+            <IconButton
+              label="Actualizar datos"
+              icon={RefreshCw}
+              onClick={cargarDatosCompletos}
+              className="!bg-white/10 !text-cream border border-white/15 hover:!bg-white/15"
+              size="sm"
+            />
+
+            {/* Cambio de vista Caja / Dueño (sin login, es una demo) */}
+            <div
+              role="group"
+              aria-label="Cambiar vista del panel"
+              className="flex items-center gap-0.5 rounded-full border border-white/15 bg-white/10 p-0.5"
+            >
+              {([
+                { rol: 'caja' as const, label: 'Caja' },
+                { rol: 'dueno' as const, label: 'Dueño' },
+              ]).map(({ rol, label }) => (
+                <button
+                  key={rol}
+                  onClick={() => cambiarRol(rol)}
+                  aria-pressed={rolActivo === rol}
+                  className={`min-h-[32px] cursor-pointer rounded-full px-3 text-xs font-semibold transition-colors ${
+                    rolActivo === rol ? 'bg-gold text-ink' : 'text-cream/70 hover:text-cream'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </header>
+
+        <div className="flex flex-1 flex-col md:flex-row min-h-0">
+          {/* RAIL LATERAL (DESKTOP / TABLET, >= 768px) */}
+          <nav className="no-print hidden md:flex md:flex-col md:w-56 shrink-0 bg-ink text-cream border-r border-white/10 py-3">
+            {visibleNavItems.map(tab => {
+              const Icon = tab.icon;
+              const activo = tabActiva === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setTabActiva(tab.id)}
+                  className={[
+                    'flex items-center gap-3 px-5 py-3 text-sm font-medium text-left border-l-2 min-h-[44px]',
+                    activo ? 'border-gold bg-white/10 text-gold' : 'border-transparent text-cream/65 hover:bg-white/5 hover:text-cream',
+                  ].join(' ')}
+                >
+                  <Icon size={16} />
+                  <span>{tab.label}</span>
+                </button>
+              );
+            })}
+          </nav>
+
+          {/* CONTENIDO PRINCIPAL */}
+          <main className="flex-1 min-w-0 p-4 sm:p-6 lg:p-8 pb-24 md:pb-8">
+
+            {/* SECCIÓN SEEDING */}
+            {seedingMsg && (
+              <div className="mb-6 flex items-center gap-3 rounded-md border border-gold bg-gold-light px-5 py-4 text-sm font-medium text-ink">
+                {seeding ? <Loader2 className="animate-spin shrink-0" size={18} /> : <CheckCircle className="shrink-0" size={18} />}
+                <span>{seedingMsg}</span>
+              </div>
+            )}
+
+            {/* 1. MONITOREO DE MESAS */}
+            {tabActiva === 'monitoreo' && (
+              <div className="flex flex-col gap-5">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                  <h2 className="font-serif text-lg font-semibold">Mesas Activas</h2>
+                  <p className="text-xs text-ink-soft">Tocá &quot;Liberar&quot; para desocupar la mesa y cerrar su sesión.</p>
                 </div>
-              ) : (
-                mesas.map((mesa) => {
-                  const llamadosMesa = solicitudes.filter(s => s.mesa_id === mesa.id && s.tipo === 'llamar_mozo');
-                  const cuentasMesa = solicitudes.filter(s => s.mesa_id === mesa.id && s.tipo === 'pedir_cuenta');
-                  
-                  // Pedidos de esta sesión activa (creados desde ocupada_desde, excluyendo cancelados)
-                  const pedidosMesa = mesa.ocupada_desde
-                    ? pedidos.filter(p => 
-                        p.mesa_id === mesa.id && 
-                        p.estado !== 'cancelado' && 
-                        new Date(p.created_at) >= new Date(mesa.ocupada_desde!)
-                      )
-                    : [];
 
-                  const tieneLlamado = llamadosMesa.length > 0;
-                  const tieneCuenta = cuentasMesa.length > 0;
+                {mesas.length === 0 ? (
+                  <EmptyState
+                    icon={Database}
+                    title="No se encontraron mesas cargadas"
+                    description={'Ve a la pestaña "Inventario y Productos" para inicializarlas.'}
+                    className="bg-card rounded-lg border border-line border-dashed"
+                  />
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+                    {mesas.map((mesa) => {
+                      const llamadosMesa = solicitudes.filter(s => s.mesa_id === mesa.id && s.tipo === 'llamar_mozo');
+                      const cuentasMesa = solicitudes.filter(s => s.mesa_id === mesa.id && s.tipo === 'pedir_cuenta');
 
-                  let borderStyle = '1px solid #222';
-                  let bgGlow = 'transparent';
-                  if (tieneCuenta) {
-                    borderStyle = '2px solid #2b9348';
-                    bgGlow = 'rgba(43, 147, 72, 0.04)';
-                  } else if (tieneLlamado) {
-                    borderStyle = '2px solid var(--accent-gold)';
-                    bgGlow = 'rgba(197, 168, 128, 0.04)';
-                  }
+                      // Pedidos de esta sesión activa (creados desde ocupada_desde, excluyendo cancelados)
+                      const pedidosMesa = mesa.ocupada_desde
+                        ? pedidos.filter(p =>
+                            p.mesa_id === mesa.id &&
+                            p.estado !== 'cancelado' &&
+                            new Date(p.created_at) >= new Date(mesa.ocupada_desde!)
+                          )
+                        : [];
 
-                  return (
-                    <div 
-                      key={mesa.id}
-                      style={{
-                        background: '#161616',
-                        borderRadius: '0px', // Sin esquinas redondeadas
-                        border: borderStyle,
-                        backgroundColor: bgGlow || '#161616',
-                        padding: '24px', // Padding amplio
-                        boxShadow: '0 4px 20px rgba(0, 0, 0, 0.2)',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        justifyContent: 'space-between',
-                        transition: 'all 0.3s ease'
-                      }}
-                    >
-                      <div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                          <span style={{ fontSize: '18px', fontWeight: 600 }}>Mesa {mesa.numero}</span>
-                          
-                          <span style={{
-                            fontSize: '10px',
-                            textTransform: 'uppercase',
-                            fontWeight: 'bold',
-                            padding: '4px 8px',
-                            borderRadius: '0px',
-                            border: '1px solid transparent',
-                            background: 
-                              mesa.estado === 'libre' ? '#222' :
-                              mesa.estado === 'esperando_pedido' ? '#b58826' :
-                              mesa.estado === 'atendida' ? '#1c4721' : '#444',
-                            color: 
-                              mesa.estado === 'libre' ? '#a0a0a0' :
-                              mesa.estado === 'esperando_pedido' ? '#ffe6a3' : '#a3f3b2'
-                          }}>
-                            {mesa.estado === 'libre' ? 'Libre' : 
-                             mesa.estado === 'esperando_pedido' ? 'Cocina' : 
-                             mesa.estado === 'atendida' ? 'Atendida' : 'Ocupada'}
-                          </span>
-                        </div>
+                      const tieneLlamado = llamadosMesa.length > 0;
+                      const tieneCuenta = cuentasMesa.length > 0;
+                      const estadoInfo = mesaEstadoInfo(mesa.estado);
 
-                        {tieneLlamado && (
-                          <div style={{
-                            background: 'rgba(197, 168, 128, 0.15)',
-                            border: '1px solid var(--accent-gold)',
-                            color: 'var(--accent-gold)',
-                            borderRadius: '0px',
-                            padding: '10px 14px',
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            alignItems: 'center',
-                            marginBottom: '14px',
-                            animation: 'pulse 2s infinite'
-                          }}>
-                            <span style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', fontWeight: 600, letterSpacing: '0.5px' }}>
-                              <Bell size={12} className="animate-bounce" /> LLAMAN AL MOZO
-                            </span>
-                            <button 
-                              onClick={() => handleAtenderSolicitud(llamadosMesa[0].id)}
-                              style={{
-                                background: 'var(--accent-gold)',
-                                border: 'none',
-                                color: '#121212',
-                                padding: '8px 14px',
-                                borderRadius: '0px',
-                                fontSize: '11px',
-                                fontWeight: 'bold',
-                                cursor: 'pointer',
-                                textTransform: 'uppercase'
-                              }}
-                            >
-                              Atender
-                            </button>
-                          </div>
-                        )}
+                      const ringClass = tieneCuenta
+                        ? 'border-success ring-1 ring-success/40'
+                        : tieneLlamado
+                        ? 'border-gold ring-1 ring-gold/40'
+                        : 'border-line';
 
-                        {tieneCuenta && (
-                          <div style={{
-                            background: 'rgba(43, 147, 72, 0.15)',
-                            border: '1px solid #2b9348',
-                            color: '#2b9348',
-                            borderRadius: '0px',
-                            padding: '10px 14px',
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            alignItems: 'center',
-                            marginBottom: '14px',
-                            animation: 'pulse 2s infinite'
-                          }}>
-                            <span style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', fontWeight: 600, letterSpacing: '0.5px' }}>
-                              <Receipt size={12} /> PIDEN LA CUENTA
-                            </span>
-                            <button 
-                              onClick={() => handleAtenderSolicitud(cuentasMesa[0].id)}
-                              style={{
-                                background: '#2b9348',
-                                border: 'none',
-                                color: 'white',
-                                padding: '8px 14px',
-                                borderRadius: '0px',
-                                fontSize: '11px',
-                                fontWeight: 'bold',
-                                cursor: 'pointer',
-                                textTransform: 'uppercase'
-                              }}
-                            >
-                              Atender
-                            </button>
-                          </div>
-                        )}
+                      return (
+                        <div
+                          key={mesa.id}
+                          className={`flex flex-col justify-between rounded-lg border bg-card p-5 shadow-soft ${ringClass}`}
+                        >
+                          <div>
+                            <div className="flex items-center justify-between mb-3">
+                              <span className="text-lg font-semibold">Mesa {mesa.numero}</span>
+                              <Badge tone={estadoInfo.tone}>{estadoInfo.label}</Badge>
+                            </div>
 
-                        {/* Pedidos activos de la mesa */}
-                        {(pedidosMesa.length > 0 || mesa.cliente_nombre) && (
-                          <div style={{ borderTop: '1px solid #222', paddingTop: '12px', marginTop: '12px' }}>
-                            <p style={{ fontSize: '11px', color: '#a0a0a0', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                              Consumos Activos ({mesa.cliente_nombre || 'Mesa'}):
-                            </p>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                              {pedidosMesa.length === 0 ? (
-                                <p style={{ fontSize: '11px', color: '#666', fontStyle: 'italic' }}>Sin consumos registrados todavía.</p>
-                              ) : (
-                                pedidosMesa.flatMap(p => p.detalles || []).map((det, index) => (
-                                  <div key={index} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
-                                    <span>{det.cantidad}x {det.producto?.nombre || 'Producto'}</span>
-                                    {det.observaciones && <span style={{ color: 'var(--accent-gold)', fontSize: '10px', fontStyle: 'italic' }}>({det.observaciones})</span>}
-                                  </div>
-                                ))
-                              )}
-                              {pedidosMesa.length > 0 && (
-                                <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px dashed #333', paddingTop: '8px', marginTop: '8px', fontSize: '13px', fontWeight: 600 }}>
-                                  <span>Total Consumido:</span>
-                                  <span style={{ color: 'var(--accent-gold)' }}>
-                                    ${pedidosMesa.reduce((sum, p) => sum + Number(p.total), 0).toLocaleString('es-AR')}
-                                  </span>
+                            {tieneLlamado && (
+                              <div className="animate-pulse-glow flex items-center justify-between gap-2 rounded-md border border-gold bg-gold-light px-3 py-2.5 mb-3">
+                                <span className="flex items-center gap-1.5 text-[11px] font-semibold text-[var(--color-gold-hover)]">
+                                  <Bell size={12} className="animate-bounce" /> LLAMAN AL MOZO
+                                </span>
+                                <Button size="sm" variant="secondary" onClick={() => handleAtenderSolicitud(llamadosMesa[0].id)}>
+                                  Atender
+                                </Button>
+                              </div>
+                            )}
+
+                            {tieneCuenta && (
+                              <div className="animate-pulse-glow flex items-center justify-between gap-2 rounded-md border border-success bg-success-bg px-3 py-2.5 mb-3">
+                                <span className="flex items-center gap-1.5 text-[11px] font-semibold text-success">
+                                  <Receipt size={12} /> PIDEN LA CUENTA
+                                </span>
+                                <Button size="sm" variant="success" onClick={() => handleAtenderSolicitud(cuentasMesa[0].id)}>
+                                  Atender
+                                </Button>
+                              </div>
+                            )}
+
+                            {(pedidosMesa.length > 0 || mesa.cliente_nombre) && (
+                              <div className="border-t border-line pt-3 mt-3">
+                                <p className="text-[11px] text-ink-soft uppercase tracking-wide mb-2">
+                                  Consumos Activos ({mesa.cliente_nombre || 'Mesa'}):
+                                </p>
+                                <div className="flex flex-col gap-1.5">
+                                  {pedidosMesa.length === 0 ? (
+                                    <p className="text-[11px] text-ink-soft italic">Sin consumos registrados todavía.</p>
+                                  ) : (
+                                    pedidosMesa.flatMap(p => p.detalles || []).map((det, index) => (
+                                      <div key={index} className="flex justify-between text-xs gap-2">
+                                        <span>{det.cantidad}x {det.producto?.nombre || 'Producto'}</span>
+                                        {det.observaciones && <span className="text-gold italic shrink-0">({det.observaciones})</span>}
+                                      </div>
+                                    ))
+                                  )}
+                                  {pedidosMesa.length > 0 && (
+                                    <div className="flex justify-between border-t border-dashed border-line pt-2 mt-2 text-sm font-semibold">
+                                      <span>Total Consumido:</span>
+                                      <span className="text-gold">
+                                        ${pedidosMesa.reduce((sum, p) => sum + Number(p.total), 0).toLocaleString('es-AR')}
+                                      </span>
+                                    </div>
+                                  )}
                                 </div>
-                              )}
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Botones de control de mesa */}
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-5">
+                            <Button
+                              size="md"
+                              variant="outline"
+                              onClick={() => {
+                                setMesaConsumoManual(mesa);
+                                setItemsConsumoManual([]);
+                                setManualProductoSeleccionadoId(productosList[0]?.id || '');
+                                setManualCantidad(1);
+                                setManualObservaciones('');
+                                setManualEnviarACocina(true);
+                                setMostrarModalConsumoManual(true);
+                              }}
+                            >
+                              + Consumo
+                            </Button>
+
+                            {mesa.estado !== 'libre' && (
+                              <>
+                                <Button
+                                  size="md"
+                                  variant="success"
+                                  icon={Receipt}
+                                  disabled={pedidosMesa.length === 0}
+                                  onClick={() => handleAbrirFacturacionMesa(mesa)}
+                                >
+                                  Cobrar
+                                </Button>
+                                <Button
+                                  size="md"
+                                  variant="secondary"
+                                  icon={Printer}
+                                  disabled={pedidosMesa.length === 0}
+                                  onClick={() => setMesaTicketImprimir(mesa)}
+                                >
+                                  Pre-Cuenta
+                                </Button>
+                              </>
+                            )}
+                          </div>
+                          {mesa.estado !== 'libre' && (
+                            <Button
+                              size="md"
+                              variant="ghost"
+                              icon={Trash2}
+                              className="!text-danger mt-2 w-full sm:w-auto"
+                              onClick={() => handleConfirmarLiberarMesa(mesa)}
+                            >
+                              Liberar Mesa
+                            </Button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* 2. TABLA DE PEDIDOS Y DELIVERY */}
+            {tabActiva === 'pedidos' && (
+              <div className="flex flex-col gap-6">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                  <h2 className="font-serif text-lg font-semibold">Cola de Pedidos Activos (Cocina &amp; Delivery)</h2>
+                  <Badge tone="gold">{pedidosActivos.length} pedidos en cola</Badge>
+                </div>
+
+                <div className="flex flex-col gap-4">
+                  {pedidosActivos.length === 0 ? (
+                    <EmptyState
+                      icon={ShoppingBag}
+                      title="No hay pedidos pendientes en preparación"
+                      className="bg-card rounded-lg border border-line border-dashed"
+                    />
+                  ) : (
+                    pedidosActivos.map((pedido) => (
+                      <div
+                        key={pedido.id}
+                        className="flex flex-col md:flex-row md:justify-between md:items-start gap-5 rounded-lg border border-line bg-card p-5 shadow-soft"
+                      >
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-3 flex-wrap">
+                            <Badge tone={pedido.tipo === 'delivery' ? 'info' : 'warning'}>
+                              <span className="inline-flex items-center gap-1">
+                                {pedido.tipo === 'delivery' ? <Truck size={12} /> : <Coffee size={12} />}
+                                {pedido.tipo === 'delivery' ? 'DELIVERY' : `MESA ${pedido.mesa?.numero}`}
+                              </span>
+                            </Badge>
+                            <span className="text-xs text-ink-soft">
+                              Pedido #{pedido.id} • {new Date(pedido.created_at).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                          </div>
+
+                          <h4 className="text-sm font-semibold flex items-center gap-2 mb-2.5">
+                            <User size={13} className="text-gold" /> {pedido.nombre_cliente}
+                          </h4>
+
+                          <div className="flex flex-col gap-1.5 text-xs text-ink-soft mb-3.5">
+                            <span className="flex items-center gap-1.5">
+                              <Phone size={12} /> Celular: {pedido.telefono}
+                            </span>
+                            {pedido.tipo === 'delivery' && pedido.direccion && (
+                              <span className="flex items-center gap-1.5">
+                                <MapPin size={12} /> Dirección: {pedido.direccion}
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="rounded-md border border-line bg-cream p-4">
+                            <p className="text-[10px] font-semibold text-ink-soft uppercase tracking-wide mb-2">Productos:</p>
+                            <div className="flex flex-col gap-2">
+                              {pedido.detalles?.map((det, index) => (
+                                <div key={index} className="flex justify-between text-xs gap-2">
+                                  <span>
+                                    <b>{det.cantidad}x</b> {det.producto?.nombre || 'Producto'}
+                                    {det.observaciones && (
+                                      <span className="block text-[11px] text-gold italic mt-0.5">
+                                        Nota: {det.observaciones}
+                                      </span>
+                                    )}
+                                  </span>
+                                  <span className="shrink-0">${(Number(det.precio_unitario) * det.cantidad).toLocaleString('es-AR')}</span>
+                                </div>
+                              ))}
                             </div>
                           </div>
-                        )}
+                        </div>
+
+                        <div className="flex flex-col md:items-end justify-between gap-4 md:min-w-[170px]">
+                          <div className="md:text-right">
+                            <span className="block text-[11px] text-ink-soft uppercase tracking-wide">Total del Pedido</span>
+                            <span className="text-xl font-bold text-gold">${Number(pedido.total).toLocaleString('es-AR')}</span>
+                          </div>
+
+                          <div className="flex flex-wrap gap-2 w-full md:justify-end">
+                            {pedido.estado === 'pendiente' && (
+                              <Button size="md" variant="secondary" onClick={() => handleEstadoPedido(pedido.id, 'preparando')}>
+                                Preparar
+                              </Button>
+                            )}
+                            {pedido.estado === 'preparando' && (
+                              <Button size="md" variant="success" onClick={() => handleEstadoPedido(pedido.id, 'listo')}>
+                                Listo
+                              </Button>
+                            )}
+                            {pedido.estado === 'listo' && (
+                              <Button size="md" variant="success" onClick={() => handleEstadoPedido(pedido.id, 'entregado')}>
+                                Entregar
+                              </Button>
+                            )}
+                            <Button size="md" variant="outline" className="!text-danger" onClick={() => handleConfirmarCancelarPedido(pedido.id)}>
+                              Cancelar
+                            </Button>
+                          </div>
+                        </div>
                       </div>
-
-                      {/* Botones de control de mesa */}
-                      <div style={{ display: 'flex', gap: '8px', marginTop: '20px', flexWrap: 'wrap' }}>
-                        <button
-                          onClick={() => {
-                            setMesaConsumoManual(mesa);
-                            setItemsConsumoManual([]);
-                            setManualProductoSeleccionadoId(productosList[0]?.id || '');
-                            setManualCantidad(1);
-                            setManualObservaciones('');
-                            setManualEnviarACocina(true);
-                            setMostrarModalConsumoManual(true);
-                          }}
-                          style={{
-                            flex: 1,
-                            minWidth: '80px',
-                            background: '#222',
-                            border: '1px solid #444',
-                            color: '#ccc',
-                            borderRadius: '0px',
-                            padding: '8px',
-                            fontSize: '11px',
-                            fontWeight: 600,
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: '4px',
-                            textTransform: 'uppercase'
-                          }}
-                        >
-                          <span>+ Consumo</span>
-                        </button>
-
-                        {mesa.estado !== 'libre' && (
-                          <>
-                            <button
-                              onClick={() => handleAbrirFacturacionMesa(mesa)}
-                              disabled={pedidosMesa.length === 0}
-                              style={{
-                                flex: 1,
-                                minWidth: '95px',
-                                background: '#2b9348',
-                                border: 'none',
-                                color: 'white',
-                                borderRadius: '0px',
-                                padding: '8px',
-                                fontSize: '11px',
-                                fontWeight: 'bold',
-                                cursor: pedidosMesa.length === 0 ? 'not-allowed' : 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                gap: '4px',
-                                opacity: pedidosMesa.length === 0 ? 0.5 : 1,
-                                textTransform: 'uppercase'
-                              }}
-                            >
-                              <Receipt size={12} />
-                              <span>Cobrar</span>
-                            </button>
-
-                            <button
-                              onClick={() => setMesaTicketImprimir(mesa)}
-                              disabled={pedidosMesa.length === 0}
-                              style={{
-                                flex: 1,
-                                minWidth: '80px',
-                                background: 'var(--accent-gold)',
-                                border: 'none',
-                                color: '#121212',
-                                borderRadius: '0px',
-                                padding: '8px',
-                                fontSize: '11px',
-                                fontWeight: 600,
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                gap: '4px',
-                                opacity: pedidosMesa.length === 0 ? 0.5 : 1,
-                                textTransform: 'uppercase'
-                              }}
-                            >
-                              <Printer size={12} />
-                              <span>Pre-Cuenta</span>
-                            </button>
-                            <button
-                              onClick={() => {
-                                if (confirm(`¿Estás seguro de liberar la Mesa ${mesa.numero}? Esto borrará los consumos de la sesión actual.`)) {
-                                  handleLiberarMesa(mesa.id);
-                                }
-                              }}
-                              style={{
-                                flex: 1,
-                                minWidth: '80px',
-                                background: '#222',
-                                border: '1px solid #333',
-                                color: '#ff4d4d',
-                                borderRadius: '0px',
-                                padding: '8px',
-                                fontSize: '11px',
-                                fontWeight: 600,
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                gap: '4px',
-                                textTransform: 'uppercase'
-                              }}
-                            >
-                              <Trash2 size={12} />
-                              <span>Liberar</span>
-                            </button>
-                          </>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* 2. TABLA DE PEDIDOS Y DELIVERY */}
-        {tabActiva === 'pedidos' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h2 style={{ fontSize: '18px', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Cola de Pedidos Activos (Cocina & Delivery)</h2>
-              <span style={{ background: 'var(--accent-gold)', color: '#121212', fontSize: '11px', fontWeight: 600, padding: '4px 8px', borderRadius: '0px', textTransform: 'uppercase' }}>
-                {pedidosActivos.length} pedidos en cola
-              </span>
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              {pedidosActivos.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '60px', border: '1px dashed #333', borderRadius: '0px', color: '#a0a0a0' }}>
-                  <ShoppingBag size={32} style={{ marginBottom: '12px', color: '#555' }} />
-                  <p>No hay pedidos pendientes en preparación.</p>
+                    ))
+                  )}
                 </div>
-              ) : (
-                pedidosActivos.map((pedido) => (
-                  <div 
-                    key={pedido.id}
-                    style={{
-                      background: '#161616',
-                      borderRadius: '0px',
-                      border: '1px solid #222',
-                      padding: '24px', // Espaciado amplio
-                      display: 'flex',
-                      flexWrap: 'wrap',
-                      justifyContent: 'space-between',
-                      alignItems: 'flex-start',
-                      gap: '20px'
-                    }}
-                  >
-                    <div style={{ flex: 1, minWidth: '250px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
-                        <span style={{
-                          fontSize: '10px',
-                          fontWeight: 'bold',
-                          padding: '4px 8px',
-                          borderRadius: '0px',
-                          background: pedido.tipo === 'delivery' ? 'rgba(59, 130, 246, 0.15)' : 'rgba(245, 158, 11, 0.15)',
-                          color: pedido.tipo === 'delivery' ? '#3b82f6' : '#f59e0b',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '4px',
-                          letterSpacing: '0.5px'
-                        }}>
-                          {pedido.tipo === 'delivery' ? <Truck size={12} /> : <Coffee size={12} />}
-                          {pedido.tipo === 'delivery' ? 'DELIVERY' : `MESA ${pedido.mesa?.numero}`}
-                        </span>
 
-                        <span style={{ fontSize: '12px', color: '#a0a0a0' }}>
-                          Pedido #{pedido.id} • {new Date(pedido.created_at).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}
-                        </span>
-                      </div>
+                {/* HISTORIAL DE PEDIDOS */}
+                {pedidosCompletados.length > 0 && (
+                  <div className="mt-6 border-t border-line pt-5">
+                    <h3 className="text-xs font-semibold text-ink-soft uppercase tracking-wide mb-3">Historial Reciente (Entregados y Cancelados)</h3>
+                    <div className="flex flex-col gap-2">
+                      {pedidosCompletados.slice(0, 10).map((pedido) => (
+                        <div
+                          key={pedido.id}
+                          className="flex justify-between items-center gap-2 rounded-md border border-line bg-card px-4 py-3 text-xs"
+                        >
+                          <div className="flex items-center gap-3 min-w-0">
+                            <Badge tone={pedido.estado === 'entregado' ? 'success' : 'danger'}>{pedido.estado}</Badge>
+                            <span className="truncate">#{pedido.id} • {pedido.nombre_cliente} ({pedido.tipo})</span>
+                          </div>
+                          <div className="text-gold font-semibold shrink-0">
+                            ${Number(pedido.total).toLocaleString('es-AR')}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
-                      <h4 style={{ fontSize: '15px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
-                        <User size={13} style={{ color: 'var(--accent-gold)' }} /> {pedido.nombre_cliente}
-                      </h4>
+            {/* 2.5 FACTURACIÓN Y CAJA DIARIA */}
+            {tabActiva === 'facturacion' && (
+              <div className="flex flex-col gap-6">
+                <div>
+                  <h2 className="font-serif text-lg font-semibold">Facturación &amp; Cierre de Caja</h2>
+                  <p className="text-xs text-ink-soft mt-1">Gestión de comprobantes emitidos, arqueo por medio de pago y emisión de Facturas A / B / Pre-cuenta.</p>
+                </div>
 
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '13px', color: '#a0a0a0', marginBottom: '14px' }}>
-                        <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <Phone size={12} /> Celular: {pedido.telefono}
-                        </span>
-                        {pedido.tipo === 'delivery' && pedido.direccion && (
-                          <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <MapPin size={12} /> Dirección: {pedido.direccion}
-                          </span>
-                        )}
-                      </div>
+                {/* METRICAS DE COBRO / ARQUEO DE CAJA */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+                  <div className="rounded-lg border border-line bg-card p-5">
+                    <span className="block text-[11px] text-ink-soft uppercase mb-2">💵 Efectivo en Caja</span>
+                    <span className="block text-2xl font-bold text-success">
+                      ${pedidos.filter(p => p.facturado_at && p.metodo_pago === 'efectivo').reduce((sum, p) => sum + Number(p.total_facturado || p.total), 0).toLocaleString('es-AR')}
+                    </span>
+                    <p className="text-[11px] text-ink-soft mt-1">
+                      {pedidos.filter(p => p.facturado_at && p.metodo_pago === 'efectivo').length} tickets abonados en efectivo
+                    </p>
+                  </div>
 
-                      <div style={{ background: '#0d0d0d', border: '1px solid #222', borderRadius: '0px', padding: '16px' }}>
-                        <p style={{ fontSize: '10px', color: '#666', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px', fontWeight: 600 }}>Productos:</p>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                          {pedido.detalles?.map((det, index) => (
-                            <div key={index} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
-                              <span>
-                                <b>{det.cantidad}x</b> {det.producto?.nombre || 'Producto'}
-                                {det.observaciones && (
-                                  <span style={{ display: 'block', fontSize: '11px', color: 'var(--accent-gold)', fontStyle: 'italic', marginTop: '2px' }}>
-                                    Nota: {det.observaciones}
-                                  </span>
-                                )}
-                              </span>
-                              <span>${(Number(det.precio_unitario) * det.cantidad).toLocaleString('es-AR')}</span>
+                  <div className="rounded-lg border border-line bg-card p-5">
+                    <span className="block text-[11px] text-ink-soft uppercase mb-2">📱 Mercado Pago / QR</span>
+                    <span className="block text-2xl font-bold text-info">
+                      ${pedidos.filter(p => p.facturado_at && p.metodo_pago === 'mercadopago').reduce((sum, p) => sum + Number(p.total_facturado || p.total), 0).toLocaleString('es-AR')}
+                    </span>
+                    <p className="text-[11px] text-ink-soft mt-1">
+                      {pedidos.filter(p => p.facturado_at && p.metodo_pago === 'mercadopago').length} transferencias QR recibidas
+                    </p>
+                  </div>
+
+                  <div className="rounded-lg border border-line bg-card p-5">
+                    <span className="block text-[11px] text-ink-soft uppercase mb-2">💳 Tarjetas Débito / Crédito</span>
+                    <span className="block text-2xl font-bold text-[#a855f7]">
+                      ${pedidos.filter(p => p.facturado_at && p.metodo_pago === 'tarjeta').reduce((sum, p) => sum + Number(p.total_facturado || p.total), 0).toLocaleString('es-AR')}
+                    </span>
+                    <p className="text-[11px] text-ink-soft mt-1">
+                      {pedidos.filter(p => p.facturado_at && p.metodo_pago === 'tarjeta').length} cupones procesados
+                    </p>
+                  </div>
+
+                  <div className="rounded-lg border border-gold bg-gold-light p-5">
+                    <span className="block text-[11px] text-[var(--color-gold-hover)] uppercase mb-2">💰 Total General Facturado</span>
+                    <span className="block text-2xl font-bold text-[var(--color-gold-hover)]">
+                      ${pedidos.filter(p => p.facturado_at || p.estado === 'entregado').reduce((sum, p) => sum + Number(p.total_facturado || p.total), 0).toLocaleString('es-AR')}
+                    </span>
+                    <p className="text-[11px] text-ink mt-1">
+                      {pedidos.filter(p => p.facturado_at || p.estado === 'entregado').length} operaciones cerradas
+                    </p>
+                  </div>
+                </div>
+
+                {/* HISTORIAL DE COMPROBANTES */}
+                <div className="rounded-lg border border-line bg-card p-5 sm:p-6">
+                  <h3 className="text-sm font-semibold uppercase tracking-wide mb-4">Historial de Comprobantes Emitidos</h3>
+
+                  {(() => {
+                    const comprobantes = pedidos.filter(p => p.facturado_at || p.nro_comprobante || p.estado === 'entregado');
+                    if (comprobantes.length === 0) {
+                      return (
+                        <EmptyState
+                          icon={ImageOff}
+                          title="Todavía no hay comprobantes emitidos"
+                          description={'Presioná "Cobrar" en cualquier mesa o pedido activo.'}
+                        />
+                      );
+                    }
+                    return (
+                      <>
+                        {/* Tabla (>= md) */}
+                        <div className="hidden md:block overflow-x-auto">
+                          <table className="w-full text-left text-sm border-collapse">
+                            <thead>
+                              <tr className="border-b border-line text-ink-soft uppercase text-[11px]">
+                                <th className="py-3 px-2">N° Comprobante</th>
+                                <th className="py-3 px-2">Tipo</th>
+                                <th className="py-3 px-2">Cliente / Mesa</th>
+                                <th className="py-3 px-2">Medio de Pago</th>
+                                <th className="py-3 px-2">Monto Neto</th>
+                                <th className="py-3 px-2">IVA (21%)</th>
+                                <th className="py-3 px-2">Total</th>
+                                <th className="py-3 px-2">CAE (AFIP)</th>
+                                <th className="py-3 px-2 text-right">Acciones</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {comprobantes.map(p => (
+                                <tr key={p.id} className="border-b border-line">
+                                  <td className="py-3 px-2 font-semibold text-gold">
+                                    {p.nro_comprobante || `TC-0001-${String(p.id).padStart(8, '0')}`}
+                                  </td>
+                                  <td className="py-3 px-2">
+                                    <Badge tone={p.tipo_comprobante === 'factura_a' ? 'info' : p.tipo_comprobante === 'factura_b' ? 'success' : 'neutral'}>
+                                      {p.tipo_comprobante === 'factura_a' ? 'Factura A' : p.tipo_comprobante === 'factura_b' ? 'Factura B' : 'Pre-Cuenta'}
+                                    </Badge>
+                                  </td>
+                                  <td className="py-3 px-2">
+                                    {p.cliente_razon_social || p.nombre_cliente} {p.mesa_id ? `(Mesa ${p.mesa_id})` : '(Delivery)'}
+                                  </td>
+                                  <td className="py-3 px-2 capitalize">{p.metodo_pago || 'efectivo'}</td>
+                                  <td className="py-3 px-2 text-ink-soft">
+                                    ${Number(p.monto_neto || (Number(p.total) / 1.21)).toLocaleString('es-AR')}
+                                  </td>
+                                  <td className="py-3 px-2 text-ink-soft">
+                                    ${Number(p.monto_iva || (Number(p.total) - Number(p.total) / 1.21)).toLocaleString('es-AR')}
+                                  </td>
+                                  <td className="py-3 px-2 font-bold">
+                                    ${Number(p.total_facturado || p.total).toLocaleString('es-AR')}
+                                  </td>
+                                  <td className="py-3 px-2 text-xs text-ink-soft">{p.cae || '7438192019281'}</td>
+                                  <td className="py-3 px-2 text-right">
+                                    <Button size="sm" variant="outline" icon={Printer} onClick={() => setTicketFacturaImprimir(p)}>
+                                      Reimprimir
+                                    </Button>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+
+                        {/* Tarjetas (< md) */}
+                        <div className="md:hidden flex flex-col gap-3">
+                          {comprobantes.map(p => (
+                            <div key={p.id} className="rounded-md border border-line bg-cream p-4">
+                              <div className="flex items-center justify-between gap-2 mb-2">
+                                <span className="font-semibold text-gold text-sm">
+                                  {p.nro_comprobante || `TC-0001-${String(p.id).padStart(8, '0')}`}
+                                </span>
+                                <Badge tone={p.tipo_comprobante === 'factura_a' ? 'info' : p.tipo_comprobante === 'factura_b' ? 'success' : 'neutral'}>
+                                  {p.tipo_comprobante === 'factura_a' ? 'Factura A' : p.tipo_comprobante === 'factura_b' ? 'Factura B' : 'Pre-Cuenta'}
+                                </Badge>
+                              </div>
+                              <p className="text-sm mb-2">
+                                {p.cliente_razon_social || p.nombre_cliente} {p.mesa_id ? `(Mesa ${p.mesa_id})` : '(Delivery)'}
+                              </p>
+                              <dl className="grid grid-cols-2 gap-y-1.5 text-xs mb-3">
+                                <dt className="text-ink-soft">Medio de pago</dt>
+                                <dd className="text-right capitalize">{p.metodo_pago || 'efectivo'}</dd>
+                                <dt className="text-ink-soft">Monto neto</dt>
+                                <dd className="text-right">${Number(p.monto_neto || (Number(p.total) / 1.21)).toLocaleString('es-AR')}</dd>
+                                <dt className="text-ink-soft">IVA (21%)</dt>
+                                <dd className="text-right">${Number(p.monto_iva || (Number(p.total) - Number(p.total) / 1.21)).toLocaleString('es-AR')}</dd>
+                                <dt className="text-ink-soft font-semibold">Total</dt>
+                                <dd className="text-right font-bold">${Number(p.total_facturado || p.total).toLocaleString('es-AR')}</dd>
+                                <dt className="text-ink-soft">CAE (AFIP)</dt>
+                                <dd className="text-right">{p.cae || '7438192019281'}</dd>
+                              </dl>
+                              <Button size="md" variant="outline" fullWidth icon={Printer} onClick={() => setTicketFacturaImprimir(p)}>
+                                Reimprimir
+                              </Button>
                             </div>
                           ))}
                         </div>
-                      </div>
-                    </div>
-
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', justifyContent: 'space-between', height: '100%', minWidth: '160px', alignSelf: 'stretch' }}>
-                      <div style={{ textAlign: 'right', marginBottom: '20px' }}>
-                        <span style={{ fontSize: '11px', color: '#a0a0a0', display: 'block', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Total del Pedido</span>
-                        <span style={{ fontSize: '20px', fontWeight: 700, color: 'var(--accent-gold)' }}>${Number(pedido.total).toLocaleString('es-AR')}</span>
-                      </div>
-
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', width: '100%' }}>
-                        <div style={{ display: 'flex', gap: '6px' }}>
-                          {pedido.estado === 'pendiente' && (
-                            <button 
-                              onClick={() => handleEstadoPedido(pedido.id, 'preparando')}
-                              style={{
-                                flex: 1,
-                                background: '#b58826',
-                                color: 'white',
-                                border: 'none',
-                                padding: '10px 14px',
-                                borderRadius: '0px',
-                                fontSize: '11px',
-                                fontWeight: 600,
-                                cursor: 'pointer',
-                                textTransform: 'uppercase'
-                              }}
-                            >
-                              Preparar
-                            </button>
-                          )}
-                          {pedido.estado === 'preparando' && (
-                            <button 
-                              onClick={() => handleEstadoPedido(pedido.id, 'listo')}
-                              style={{
-                                flex: 1,
-                                background: '#1c4721',
-                                color: 'white',
-                                border: 'none',
-                                padding: '10px 14px',
-                                borderRadius: '0px',
-                                fontSize: '11px',
-                                fontWeight: 600,
-                                cursor: 'pointer',
-                                textTransform: 'uppercase'
-                              }}
-                            >
-                              Listo
-                            </button>
-                          )}
-                          {pedido.estado === 'listo' && (
-                            <button 
-                              onClick={() => handleEstadoPedido(pedido.id, 'entregado')}
-                              style={{
-                                flex: 1,
-                                background: '#2b9348',
-                                color: 'white',
-                                border: 'none',
-                                padding: '10px 14px',
-                                borderRadius: '0px',
-                                fontSize: '11px',
-                                fontWeight: 600,
-                                cursor: 'pointer',
-                                textTransform: 'uppercase'
-                              }}
-                            >
-                              Entregar
-                            </button>
-                          )}
-                          
-                          <button 
-                            onClick={() => {
-                              if (confirm('¿Desea cancelar este pedido?')) {
-                                handleEstadoPedido(pedido.id, 'cancelado');
-                              }
-                            }}
-                            style={{
-                              background: '#222',
-                              border: '1px solid #333',
-                              color: '#ff4d4d',
-                              padding: '10px',
-                              borderRadius: '0px',
-                              fontSize: '11px',
-                              cursor: 'pointer',
-                              textTransform: 'uppercase'
-                            }}
-                            title="Cancelar Pedido"
-                          >
-                            Cancelar
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-
-            {/* HISTORIAL DE PEDIDOS */}
-            {pedidosCompletados.length > 0 && (
-              <div style={{ marginTop: '40px', borderTop: '1px solid #222', paddingTop: '24px' }}>
-                <h3 style={{ fontSize: '14px', color: '#888', marginBottom: '16px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Historial Reciente (Entregados y Cancelados)</h3>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  {pedidosCompletados.slice(0, 10).map((pedido) => (
-                    <div 
-                      key={pedido.id}
-                      style={{
-                        background: '#121212',
-                        border: '1px solid #1a1a1a',
-                        borderRadius: '0px',
-                        padding: '12px 20px',
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        fontSize: '13px'
-                      }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        <span style={{
-                          fontSize: '10px',
-                          fontWeight: 'bold',
-                          padding: '2px 6px',
-                          borderRadius: '0px',
-                          background: pedido.estado === 'entregado' ? 'rgba(43, 147, 72, 0.1)' : 'rgba(255, 77, 77, 0.1)',
-                          color: pedido.estado === 'entregado' ? '#2b9348' : '#ff4d4d',
-                          textTransform: 'uppercase'
-                        }}>
-                          {pedido.estado}
-                        </span>
-                        <span>#{pedido.id} • {pedido.nombre_cliente} ({pedido.tipo})</span>
-                      </div>
-                      <div style={{ color: 'var(--accent-gold)', fontWeight: 600 }}>
-                        ${Number(pedido.total).toLocaleString('es-AR')}
-                      </div>
-                    </div>
-                  ))}
+                      </>
+                    );
+                  })()}
                 </div>
               </div>
             )}
-          </div>
-        )}
 
-        {/* 2.5 FACTURACIÓN Y CAJA DIARIA */}
-        {tabActiva === 'facturacion' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
-                <h2 style={{ fontSize: '18px', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Facturación & Cierre de Caja</h2>
-                <p style={{ fontSize: '12px', color: '#a0a0a0', marginTop: '4px' }}>Gestión de comprobantes emitidos, arqueo por medio de pago y emisión de Facturas A / B / Pre-cuenta.</p>
-              </div>
-            </div>
+            {/* 3. GENERADOR DE CÓDIGOS QR */}
+            {tabActiva === 'qrs' && (
+              <div className="flex flex-col gap-6">
+                <div className="no-print flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                  <div>
+                    <h2 className="font-serif text-lg font-semibold">Tarjetas de Códigos QR para las Mesas</h2>
+                    <p className="text-xs text-ink-soft mt-1">
+                      Hojas listas para imprimir. Una tarjeta por cada mesa cargada ({mesas.length} en total). Cada una contiene el código QR enlazado a la dirección <code>/mesa/[id]</code>.
+                    </p>
+                  </div>
+                  <div className="flex gap-2 flex-wrap">
+                    <Button variant="outline" onClick={handleAgregarMesa}>+ Agregar Mesa</Button>
+                    <Button variant="secondary" icon={Printer} onClick={handlePrint}>Imprimir Tarjetas QR</Button>
+                  </div>
+                </div>
 
-            {/* METRICAS DE COBRO / ARQUEO DE CAJA */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '16px' }}>
-              <div style={{ background: '#161616', border: '1px solid #222', padding: '20px' }}>
-                <span style={{ fontSize: '11px', color: '#a0a0a0', textTransform: 'uppercase', display: 'block', marginBottom: '8px' }}>💵 Efectivo en Caja</span>
-                <span style={{ fontSize: '24px', fontWeight: 700, color: '#2b9348' }}>
-                  ${pedidos.filter(p => p.facturado_at && p.metodo_pago === 'efectivo').reduce((sum, p) => sum + Number(p.total_facturado || p.total), 0).toLocaleString('es-AR')}
-                </span>
-                <p style={{ fontSize: '11px', color: '#666', marginTop: '4px' }}>
-                  {pedidos.filter(p => p.facturado_at && p.metodo_pago === 'efectivo').length} tickets abonados en efectivo
-                </p>
-              </div>
+                {mesas.length === 0 && (
+                  <EmptyState
+                    icon={Database}
+                    title="Todavía no hay mesas cargadas"
+                    description={'Usá "+ Agregar Mesa" arriba, o inicializá 10 mesas desde la pestaña Inventario.'}
+                    className="no-print bg-card rounded-lg border border-line border-dashed"
+                  />
+                )}
 
-              <div style={{ background: '#161616', border: '1px solid #222', padding: '20px' }}>
-                <span style={{ fontSize: '11px', color: '#a0a0a0', textTransform: 'uppercase', display: 'block', marginBottom: '8px' }}>📱 Mercado Pago / QR</span>
-                <span style={{ fontSize: '24px', fontWeight: 700, color: '#3b82f6' }}>
-                  ${pedidos.filter(p => p.facturado_at && p.metodo_pago === 'mercadopago').reduce((sum, p) => sum + Number(p.total_facturado || p.total), 0).toLocaleString('es-AR')}
-                </span>
-                <p style={{ fontSize: '11px', color: '#666', marginTop: '4px' }}>
-                  {pedidos.filter(p => p.facturado_at && p.metodo_pago === 'mercadopago').length} transferencias QR recibidas
-                </p>
-              </div>
+                <div className="print-area grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+                  {mesas.map((mesa) => {
+                    const numero = mesa.numero;
+                    const targetUrl = `${hostUrl}/mesa/${numero}`;
+                    const qrImgSrc = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(targetUrl)}&color=121212`;
 
-              <div style={{ background: '#161616', border: '1px solid #222', padding: '20px' }}>
-                <span style={{ fontSize: '11px', color: '#a0a0a0', textTransform: 'uppercase', display: 'block', marginBottom: '8px' }}>💳 Tarjetas Débito / Crédito</span>
-                <span style={{ fontSize: '24px', fontWeight: 700, color: '#a855f7' }}>
-                  ${pedidos.filter(p => p.facturado_at && p.metodo_pago === 'tarjeta').reduce((sum, p) => sum + Number(p.total_facturado || p.total), 0).toLocaleString('es-AR')}
-                </span>
-                <p style={{ fontSize: '11px', color: '#666', marginTop: '4px' }}>
-                  {pedidos.filter(p => p.facturado_at && p.metodo_pago === 'tarjeta').length} cupones procesados
-                </p>
-              </div>
+                    return (
+                      <div
+                        key={numero}
+                        className="qr-card-printable flex flex-col items-center justify-center text-center rounded-lg border-2 border-line bg-white p-7 text-ink shadow-soft"
+                      >
+                        <span className="text-[11px] font-semibold tracking-[0.2em] uppercase text-gold">{BRAND_CONFIG.name.toUpperCase()}</span>
+                        <p className="text-[8px] uppercase tracking-wide text-ink-soft -mt-0.5 mb-4">{BRAND_CONFIG.subtitle}</p>
 
-              <div style={{ background: '#161616', border: '1px solid var(--accent-gold)', padding: '20px' }}>
-                <span style={{ fontSize: '11px', color: 'var(--accent-gold)', textTransform: 'uppercase', display: 'block', marginBottom: '8px' }}>💰 Total General Facturado</span>
-                <span style={{ fontSize: '24px', fontWeight: 700, color: 'var(--accent-gold)' }}>
-                  ${pedidos.filter(p => p.facturado_at || p.estado === 'entregado').reduce((sum, p) => sum + Number(p.total_facturado || p.total), 0).toLocaleString('es-AR')}
-                </span>
-                <p style={{ fontSize: '11px', color: '#a0a0a0', marginTop: '4px' }}>
-                  {pedidos.filter(p => p.facturado_at || p.estado === 'entregado').length} operaciones cerradas
-                </p>
-              </div>
-            </div>
+                        <div className="w-14 h-14 rounded-md bg-ink text-cream border-2 border-gold flex items-center justify-center text-xl font-bold mb-5">
+                          {numero}
+                        </div>
 
-            {/* TABLA DE COMPROBANTES Y FACTURAS */}
-            <div style={{ background: '#161616', border: '1px solid #222', padding: '24px', marginTop: '12px' }}>
-              <h3 style={{ fontSize: '15px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '16px' }}>
-                Historial de Comprobantes Emitidos
-              </h3>
-              
-              <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
-                  <thead>
-                    <tr style={{ borderBottom: '1px solid #333', color: '#888', textTransform: 'uppercase', fontSize: '11px' }}>
-                      <th style={{ padding: '12px 8px' }}>N° Comprobante</th>
-                      <th style={{ padding: '12px 8px' }}>Tipo</th>
-                      <th style={{ padding: '12px 8px' }}>Cliente / Mesa</th>
-                      <th style={{ padding: '12px 8px' }}>Medio de Pago</th>
-                      <th style={{ padding: '12px 8px' }}>Monto Neto</th>
-                      <th style={{ padding: '12px 8px' }}>IVA (21%)</th>
-                      <th style={{ padding: '12px 8px' }}>Total</th>
-                      <th style={{ padding: '12px 8px' }}>CAE (AFIP)</th>
-                      <th style={{ padding: '12px 8px', textAlign: 'right' }}>Acciones</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {pedidos.filter(p => p.facturado_at || p.nro_comprobante || p.estado === 'entregado').length === 0 ? (
-                      <tr>
-                        <td colSpan={9} style={{ padding: '30px', textAlign: 'center', color: '#777' }}>
-                          No hay comprobantes emitidos en el sistema todavía. Presioná "Cobrar" en cualquier mesa o pedido activo.
-                        </td>
-                      </tr>
-                    ) : (
-                      pedidos.filter(p => p.facturado_at || p.nro_comprobante || p.estado === 'entregado').map(p => (
-                        <tr key={p.id} style={{ borderBottom: '1px solid #222' }}>
-                          <td style={{ padding: '12px 8px', fontWeight: 600, color: 'var(--accent-gold)' }}>
-                            {p.nro_comprobante || `TC-0001-${String(p.id).padStart(8, '0')}`}
-                          </td>
-                          <td style={{ padding: '12px 8px' }}>
-                            <span style={{
-                              fontSize: '10px',
-                              fontWeight: 'bold',
-                              padding: '2px 6px',
-                              background: p.tipo_comprobante === 'factura_a' ? '#3b82f6' : p.tipo_comprobante === 'factura_b' ? '#2b9348' : '#444',
-                              color: 'white',
-                              textTransform: 'uppercase'
-                            }}>
-                              {p.tipo_comprobante === 'factura_a' ? 'Factura A' : p.tipo_comprobante === 'factura_b' ? 'Factura B' : 'Pre-Cuenta'}
-                            </span>
-                          </td>
-                          <td style={{ padding: '12px 8px' }}>
-                            {p.cliente_razon_social || p.nombre_cliente} {p.mesa_id ? `(Mesa ${p.mesa_id})` : '(Delivery)'}
-                          </td>
-                          <td style={{ padding: '12px 8px', textTransform: 'capitalize' }}>
-                            {p.metodo_pago || 'efectivo'}
-                          </td>
-                          <td style={{ padding: '12px 8px', color: '#aaa' }}>
-                            ${Number(p.monto_neto || (Number(p.total) / 1.21)).toLocaleString('es-AR')}
-                          </td>
-                          <td style={{ padding: '12px 8px', color: '#aaa' }}>
-                            ${Number(p.monto_iva || (Number(p.total) - Number(p.total) / 1.21)).toLocaleString('es-AR')}
-                          </td>
-                          <td style={{ padding: '12px 8px', fontWeight: 700 }}>
-                            ${Number(p.total_facturado || p.total).toLocaleString('es-AR')}
-                          </td>
-                          <td style={{ padding: '12px 8px', fontSize: '11px', color: '#888' }}>
-                            {p.cae || '7438192019281'}
-                          </td>
-                          <td style={{ padding: '12px 8px', textAlign: 'right' }}>
-                            <button
-                              onClick={() => setTicketFacturaImprimir(p)}
-                              style={{
-                                background: '#222',
-                                border: '1px solid #444',
-                                color: '#fff',
-                                padding: '6px 12px',
-                                fontSize: '11px',
-                                fontWeight: 600,
-                                cursor: 'pointer',
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '4px'
-                              }}
-                            >
-                              <Printer size={12} />
-                              <span>Reimprimir</span>
-                            </button>
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        )}
+                        <div className="w-[180px] h-[180px] rounded-md border border-line bg-white p-2 flex items-center justify-center mb-5">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={qrImgSrc} alt={`QR Mesa ${numero}`} className="w-full h-full object-contain" />
+                        </div>
 
-        {/* 3. GENERADOR DE CÓDIGOS QR */}
-        {tabActiva === 'qrs' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }} className="no-print">
-              <div>
-                <h2 style={{ fontSize: '18px', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Tarjetas de Códigos QR para las Mesas</h2>
-                <p style={{ fontSize: '12px', color: '#a0a0a0', marginTop: '4px' }}>
-                  Hojas listas para imprimir. Una tarjeta por cada mesa cargada ({mesas.length} en total). Cada una contiene el código QR enlazado a la dirección `/mesa/[id]`.
-                </p>
-              </div>
-              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-                <button
-                  onClick={handleAgregarMesa}
-                  style={{
-                    background: '#222',
-                    border: '1px solid #444',
-                    color: 'white',
-                    borderRadius: '0px',
-                    padding: '12px 20px',
-                    fontSize: '13px',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.5px'
-                  }}
-                >
-                  + Agregar Mesa
-                </button>
-                <button
-                  onClick={handlePrint}
-                  style={{
-                    background: 'var(--accent-gold)',
-                    color: '#121212',
-                    border: 'none',
-                    borderRadius: '0px',
-                    padding: '12px 24px',
-                    fontSize: '13px',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.5px'
-                  }}
-                >
-                  <Printer size={14} />
-                  <span>Imprimir Tarjetas QR</span>
-                </button>
-              </div>
-            </div>
+                        <h4 className="text-xs font-semibold uppercase tracking-wide mb-1">Escaneá el QR</h4>
+                        <p className="text-[9px] text-ink-soft leading-snug max-w-[200px]">
+                          Mirá la carta, realizá tu pedido, agregá agua o llamá al mozo desde tu celular.
+                        </p>
 
-            {mesas.length === 0 && (
-              <div style={{ textAlign: 'center', padding: '60px', border: '1px dashed #333', borderRadius: '0px', color: '#a0a0a0' }} className="no-print">
-                <Database size={32} style={{ marginBottom: '12px', color: '#555' }} />
-                <p>Todavía no hay mesas cargadas.</p>
-                <p style={{ fontSize: '13px', marginTop: '6px' }}>Usá &quot;+ Agregar Mesa&quot; arriba, o inicializá 10 mesas desde la pestaña Inventario.</p>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="no-print !text-danger mt-4"
+                          onClick={() => handleEliminarMesa(mesa)}
+                        >
+                          Eliminar Mesa
+                        </Button>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             )}
 
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
-              gap: '24px',
-              marginTop: '12px'
-            }} className="print-area">
-              {mesas.map((mesa) => {
-                const numero = mesa.numero;
-                const targetUrl = `${hostUrl}/mesa/${numero}`;
-                const qrImgSrc = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(targetUrl)}&color=121212`;
+            {/* 4. METRICAS DE VENTA (SÓLO DUEÑO) */}
+            {tabActiva === 'metrics' && rolActivo === 'dueno' && (
+              <div className="flex flex-col gap-7">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                  <h2 className="font-serif text-lg font-semibold">Métricas y Analíticas del Local</h2>
+                  <Badge tone="neutral">Vista Administrador</Badge>
+                </div>
 
-                return (
-                  <div 
-                    key={numero}
-                    className="qr-card-printable"
-                    style={{
-                      background: 'white',
-                      color: '#121212',
-                      borderRadius: '0px', // Sin redondeados
-                      border: '2px solid #eae6df',
-                      padding: '32px 24px', // Espaciado amplio
-                      textAlign: 'center',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      boxShadow: '0 4px 10px rgba(0,0,0,0.03)',
-                      pageBreakInside: 'avoid'
+                {/* METRICAS DE FACTURACIÓN */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {[
+                    { titulo: 'Facturación del Día', valor: ventasHoy, desc: 'Pedidos de hoy acumulados sin cancelar', icon: DollarSign },
+                    { titulo: 'Facturación Semanal', valor: ventasSemana, desc: 'Desde el lunes de la semana en curso', icon: Calendar },
+                    { titulo: 'Facturación Mensual', valor: ventasMes, desc: 'Desde el primer día del mes actual', icon: TrendingUp }
+                  ].map((item, idx) => {
+                    const Icon = item.icon;
+                    return (
+                      <div key={idx} className="flex flex-col justify-between rounded-lg border border-line bg-card p-6 shadow-soft">
+                        <div>
+                          <div className="flex items-center justify-between mb-3">
+                            <span className="text-[11px] font-semibold text-ink-soft uppercase tracking-wide">{item.titulo}</span>
+                            <Icon size={16} className="text-gold" />
+                          </div>
+                          <h3 className="font-sans text-2xl font-bold text-gold mb-2">${item.valor.toLocaleString('es-AR')}</h3>
+                        </div>
+                        <p className="text-[11px] text-ink-soft leading-snug">{item.desc}</p>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* ROTACIÓN Y PENDIENTES */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                  {/* RANKING GENERAL */}
+                  <div className="rounded-lg border border-line bg-card p-6 sm:p-7">
+                    <h3 className="text-xs font-semibold uppercase tracking-wide text-gold mb-5">
+                      Rotación de Pastelería y Mercadería General
+                    </h3>
+                    {topGeneral.length === 0 ? (
+                      <p className="text-xs text-ink-soft italic">No hay ventas registradas.</p>
+                    ) : (
+                      <div className="flex flex-col gap-4">
+                        {topGeneral.slice(0, 5).map((item, idx) => {
+                          const maxQty = topGeneral[0].cantidad;
+                          const percentage = maxQty > 0 ? (item.cantidad / maxQty) * 100 : 0;
+                          return (
+                            <div key={idx} className="flex flex-col gap-1.5">
+                              <div className="flex justify-between text-sm gap-2">
+                                <span className="truncate">{idx + 1}. <b>{item.nombre}</b></span>
+                                <span className="text-ink-soft shrink-0">{item.cantidad} u. • <b className="text-gold">${item.total.toLocaleString('es-AR')}</b></span>
+                              </div>
+                              <div className="h-2 rounded-full bg-cream border border-line overflow-hidden">
+                                <div className="h-full rounded-full bg-gold" style={{ width: `${percentage}%` }} />
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* RANKING DE INFUSIONES / CAFÉ */}
+                  <div className="rounded-lg border border-line bg-card p-6 sm:p-7">
+                    <h3 className="text-xs font-semibold uppercase tracking-wide text-gold mb-5">
+                      Consumo de Infusiones y Cafetería
+                    </h3>
+                    {topInfusiones.length === 0 ? (
+                      <p className="text-xs text-ink-soft italic">No hay ventas de cafetería registradas.</p>
+                    ) : (
+                      <div className="flex flex-col gap-4">
+                        {topInfusiones.slice(0, 5).map((item, idx) => {
+                          const maxQty = topInfusiones[0].cantidad;
+                          const percentage = maxQty > 0 ? (item.cantidad / maxQty) * 100 : 0;
+                          return (
+                            <div key={idx} className="flex flex-col gap-1.5">
+                              <div className="flex justify-between text-sm gap-2">
+                                <span className="truncate">{idx + 1}. <b>{item.nombre}</b></span>
+                                <span className="text-ink-soft shrink-0">{item.cantidad} u. • <b className="text-gold">${item.total.toLocaleString('es-AR')}</b></span>
+                              </div>
+                              <div className="h-2 rounded-full bg-cream border border-line overflow-hidden">
+                                <div className="h-full rounded-full bg-success" style={{ width: `${percentage}%` }} />
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* MOMENTOS PICO */}
+                <div className="rounded-lg border border-line bg-card p-6 sm:p-7">
+                  <h3 className="text-xs font-semibold uppercase tracking-wide text-gold mb-5">
+                    Momentos Pico de Clientes (Días y Horarios)
+                  </h3>
+                  <div className="flex flex-col md:flex-row gap-6">
+                    <div className="flex-1 md:border-r md:border-line md:pr-6">
+                      <span className="block text-[11px] text-ink-soft uppercase tracking-wide mb-1.5">Día con más Afluencia</span>
+                      <span className="block text-2xl font-semibold mb-1">{topDay[0]}</span>
+                      <span className="text-xs text-ink-soft">Total de {topDay[1]} pedidos registrados este día de la semana.</span>
+                    </div>
+                    <div className="flex-1">
+                      <span className="block text-[11px] text-ink-soft uppercase tracking-wide mb-1.5">Horario de mayor actividad</span>
+                      <span className="block text-2xl font-semibold mb-1">{topHour[0]}</span>
+                      <span className="text-xs text-ink-soft">Total de {topHour[1]} pedidos registrados en este rango de horas.</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* 5. INVENTARIO Y GESTIÓN DE PRODUCTOS */}
+            {tabActiva === 'inventario' && (
+              <div className="flex flex-col gap-6">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                  <div>
+                    <h2 className="font-serif text-lg font-semibold">Inventario de Productos</h2>
+                    <p className="text-xs text-ink-soft">Controlá el stock disponible y agregá nuevas delicias al menú.</p>
+                  </div>
+                  <Button
+                    variant="secondary"
+                    onClick={() => {
+                      setProductoEditando(null);
+                      setFormNombre('');
+                      setFormDescripcion('');
+                      setFormPrecio('');
+                      setFormImagenUrl('');
+                      setFormCategoriaId(categoriasList[0]?.id || '');
+                      setFormStock('');
+                      setFormStockMinimo('2');
+                      setFormEsCafe(false);
+                      setFormDisponible(true);
+                      setErrorSubidaImagen('');
+                      setMostrarFormProducto(true);
                     }}
                   >
-                    <span style={{ fontSize: '11px', fontWeight: 600, letterSpacing: '2px', textTransform: 'uppercase', color: '#c5a880', margin: 0 }}>{BRAND_CONFIG.name.toUpperCase()}</span>
-                    <p style={{ fontSize: '8px', textTransform: 'uppercase', letterSpacing: '1px', color: '#656565', marginTop: '-2px', marginBottom: '16px' }}>{BRAND_CONFIG.subtitle}</p>
-                    
-                    <div style={{
-                      width: '56px',
-                      height: '56px',
-                      borderRadius: '0px', // Bordes rectos para un look industrial
-                      background: '#121212',
-                      color: 'white',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      fontSize: '22px',
-                      fontWeight: 'bold',
-                      marginBottom: '20px',
-                      border: '2px solid #c5a880'
-                    }}>
-                      {numero}
-                    </div>
-
-                    <div style={{
-                      width: '180px',
-                      height: '180px',
-                      position: 'relative',
-                      marginBottom: '20px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      border: '1px solid #eae6df',
-                      padding: '8px',
-                      borderRadius: '0px',
-                      background: '#fff'
-                    }}>
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img 
-                        src={qrImgSrc} 
-                        alt={`QR Mesa ${numero}`} 
-                        style={{ width: '100%', height: '100%', objectFit: 'contain' }}
-                      />
-                    </div>
-
-                    <h4 style={{ fontSize: '12px', fontWeight: 600, color: '#121212', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Escaneá el QR</h4>
-                    <p style={{ fontSize: '9px', color: '#656565', lineHeight: 1.3, maxWidth: '200px', margin: '0 auto' }}>
-                      Mirá la carta, realizá tu pedido, agregá agua o llamá al mozo desde tu celular.
-                    </p>
-
-                    <button
-                      onClick={() => handleEliminarMesa(mesa)}
-                      className="no-print"
-                      style={{
-                        marginTop: '16px',
-                        background: 'transparent',
-                        border: '1px solid #eae6df',
-                        color: '#a33',
-                        padding: '6px 12px',
-                        fontSize: '10px',
-                        fontWeight: 600,
-                        cursor: 'pointer',
-                        textTransform: 'uppercase'
-                      }}
-                    >
-                      Eliminar Mesa
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        {/* 4. METRICAS DE VENTA (SÓLO DUEÑO) */}
-        {tabActiva === 'metrics' && rolActivo === 'dueno' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h2 style={{ fontSize: '18px', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Métricas y Analíticas del Local</h2>
-              <span style={{ fontSize: '11px', color: '#a0a0a0', border: '1px solid #222', padding: '4px 10px', borderRadius: '0px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                Vista Administrador
-              </span>
-            </div>
-
-            {/* METRICAS DE FACTURACIÓN */}
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
-              gap: '24px'
-            }}>
-              {[
-                { titulo: 'Facturación del Día', valor: ventasHoy, desc: 'Pedidos de hoy acumulados sin cancelar', icon: DollarSign },
-                { titulo: 'Facturación Semanal', valor: ventasSemana, desc: 'Desde el lunes de la semana en curso', icon: Calendar },
-                { titulo: 'Facturación Mensual', valor: ventasMes, desc: 'Desde el primer día del mes actual', icon: TrendingUp }
-              ].map((item, idx) => {
-                const Icon = item.icon;
-                return (
-                  <div key={idx} style={{
-                    background: '#161616',
-                    border: '1px solid #222',
-                    borderRadius: '0px',
-                    padding: '28px 24px',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    justifyContent: 'space-between',
-                    boxShadow: 'var(--shadow-soft)'
-                  }}>
-                    <div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-                        <span style={{ fontSize: '11px', fontWeight: 600, color: '#a0a0a0', textTransform: 'uppercase', letterSpacing: '1px' }}>{item.titulo}</span>
-                        <Icon size={16} style={{ color: 'var(--accent-gold)' }} />
-                      </div>
-                      <h3 style={{ fontSize: '28px', fontWeight: 700, color: 'var(--accent-gold)', marginBottom: '8px', fontFamily: 'var(--font-sans)' }}>
-                        ${item.valor.toLocaleString('es-AR')}
-                      </h3>
-                    </div>
-                    <p style={{ fontSize: '11px', color: '#666', lineHeight: 1.3 }}>{item.desc}</p>
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* ROTACIÓN Y PENDIENTES */}
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(290px, 1fr))',
-              gap: '24px'
-            }}>
-              
-              {/* RANKING GENERAL */}
-              <div style={{
-                background: '#161616',
-                border: '1px solid #222',
-                borderRadius: '0px',
-                padding: '32px'
-              }}>
-                <h3 style={{ fontSize: '13px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '20px', color: 'var(--accent-gold)' }}>
-                  Rotación de Pastelería y Mercadería General
-                </h3>
-                
-                {topGeneral.length === 0 ? (
-                  <p style={{ fontSize: '12px', color: '#666', fontStyle: 'italic' }}>No hay ventas registradas.</p>
-                ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
-                    {topGeneral.slice(0, 5).map((item, idx) => {
-                      const maxQty = topGeneral[0].cantidad;
-                      const percentage = maxQty > 0 ? (item.cantidad / maxQty) * 100 : 0;
-                      return (
-                        <div key={idx} style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
-                            <span>{idx + 1}. <b>{item.nombre}</b></span>
-                            <span style={{ color: '#a0a0a0' }}>{item.cantidad} unidades • <b style={{ color: 'var(--accent-gold)' }}>${item.total.toLocaleString('es-AR')}</b></span>
-                          </div>
-                          {/* Barra de progreso afilada */}
-                          <div style={{ height: '8px', background: '#0d0d0d', border: '1px solid #222', borderRadius: '0px', overflow: 'hidden' }}>
-                            <div style={{ width: `${percentage}%`, height: '100%', background: 'var(--accent-gold)', borderRadius: '0px' }} />
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-
-              {/* RANKING DE INFUSIONES / CAFÉ */}
-              <div style={{
-                background: '#161616',
-                border: '1px solid #222',
-                borderRadius: '0px',
-                padding: '32px'
-              }}>
-                <h3 style={{ fontSize: '13px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '20px', color: 'var(--accent-gold)' }}>
-                  Consumo de Infusiones y Cafetería
-                </h3>
-                
-                {topInfusiones.length === 0 ? (
-                  <p style={{ fontSize: '12px', color: '#666', fontStyle: 'italic' }}>No hay ventas de cafetería registradas.</p>
-                ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
-                    {topInfusiones.slice(0, 5).map((item, idx) => {
-                      const maxQty = topInfusiones[0].cantidad;
-                      const percentage = maxQty > 0 ? (item.cantidad / maxQty) * 100 : 0;
-                      return (
-                        <div key={idx} style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
-                            <span>{idx + 1}. <b>{item.nombre}</b></span>
-                            <span style={{ color: '#a0a0a0' }}>{item.cantidad} unidades • <b style={{ color: 'var(--accent-gold)' }}>${item.total.toLocaleString('es-AR')}</b></span>
-                          </div>
-                          {/* Barra de progreso afilada */}
-                          <div style={{ height: '8px', background: '#0d0d0d', border: '1px solid #222', borderRadius: '0px', overflow: 'hidden' }}>
-                            <div style={{ width: `${percentage}%`, height: '100%', background: '#2b9348', borderRadius: '0px' }} />
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-
-            </div>
-
-            {/* MOMENTOS PICO */}
-            <div style={{
-              background: '#161616',
-              border: '1px solid #222',
-              borderRadius: '0px',
-              padding: '32px'
-            }}>
-              <h3 style={{ fontSize: '13px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '20px', color: 'var(--accent-gold)' }}>
-                Momentos Pico de Clientes (Días y Horarios)
-              </h3>
-              
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '32px' }}>
-                <div style={{ flex: 1, minWidth: '220px', borderRight: '1px solid #222', paddingRight: '20px' }}>
-                  <span style={{ fontSize: '11px', color: '#666', textTransform: 'uppercase', letterSpacing: '1px', display: 'block', marginBottom: '6px' }}>
-                    Día con más Afluencia
-                  </span>
-                  <span style={{ fontSize: '24px', fontWeight: 600, color: 'white', display: 'block', marginBottom: '4px' }}>
-                    {topDay[0]}
-                  </span>
-                  <span style={{ fontSize: '12px', color: '#a0a0a0' }}>
-                    Total de {topDay[1]} pedidos registrados este día de la semana.
-                  </span>
+                    + Agregar Producto
+                  </Button>
                 </div>
 
-                <div style={{ flex: 1, minWidth: '220px' }}>
-                  <span style={{ fontSize: '11px', color: '#666', textTransform: 'uppercase', letterSpacing: '1px', display: 'block', marginBottom: '6px' }}>
-                    Horario de mayor actividad
-                  </span>
-                  <span style={{ fontSize: '24px', fontWeight: 600, color: 'white', display: 'block', marginBottom: '4px' }}>
-                    {topHour[0]}
-                  </span>
-                  <span style={{ fontSize: '12px', color: '#a0a0a0' }}>
-                    Total de {topHour[1]} pedidos registrados en este rango de horas.
-                  </span>
-                </div>
-              </div>
-            </div>
+                {/* GESTIÓN DE CATEGORÍAS */}
+                <div className="rounded-lg border border-line bg-card p-5 sm:p-6">
+                  <h3 className="text-xs font-semibold uppercase tracking-wide text-gold mb-3.5">Categorías del Menú</h3>
 
-          </div>
-        )}
-
-        {/* 5. INVENTARIO Y GESTIÓN DE PRODUCTOS */}
-        {tabActiva === 'inventario' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
-                <h2 style={{ fontSize: '18px', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Inventario de Productos</h2>
-                <p style={{ fontSize: '12px', color: '#a0a0a0' }}>Controlá el stock disponible y agregá nuevas delicias al menú.</p>
-              </div>
-              <button
-                onClick={() => {
-                  setProductoEditando(null);
-                  setFormNombre('');
-                  setFormDescripcion('');
-                  setFormPrecio('');
-                  setFormImagenUrl('');
-                  setFormCategoriaId(categoriasList[0]?.id || '');
-                  setFormStock('');
-                  setFormStockMinimo('2');
-                  setFormEsCafe(false);
-                  setFormDisponible(true);
-                  setErrorSubidaImagen('');
-                  setMostrarFormProducto(true);
-                }}
-                style={{
-                  background: 'var(--accent-gold)',
-                  color: '#121212',
-                  border: 'none',
-                  borderRadius: '0px',
-                  padding: '10px 18px',
-                  fontWeight: 600,
-                  fontSize: '13px',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  textTransform: 'uppercase'
-                }}
-              >
-                <span>+ Agregar Producto</span>
-              </button>
-            </div>
-
-            {/* GESTIÓN DE CATEGORÍAS */}
-            <div style={{ background: '#161616', border: '1px solid #222', borderRadius: '0px', padding: '20px 24px' }}>
-              <h3 style={{ fontSize: '13px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--accent-gold)', marginBottom: '14px' }}>
-                Categorías del Menú
-              </h3>
-
-              {categoriasList.length === 0 ? (
-                <p style={{ fontSize: '12px', color: '#666', fontStyle: 'italic', marginBottom: '14px' }}>
-                  Todavía no hay categorías cargadas.
-                </p>
-              ) : (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '16px' }}>
-                  {categoriasList.map((cat) => (
-                    <div
-                      key={cat.id}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                        background: '#0d0d0d',
-                        border: '1px solid #333',
-                        padding: '6px 6px 6px 12px',
-                        fontSize: '12px'
-                      }}
-                    >
-                      {categoriaEditandoId === cat.id ? (
-                        <>
-                          <input
-                            type="text"
-                            autoFocus
-                            value={categoriaEditandoNombre}
-                            onChange={(e) => setCategoriaEditandoNombre(e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') handleGuardarCategoriaEditada(cat.id);
-                              if (e.key === 'Escape') setCategoriaEditandoId(null);
-                            }}
-                            style={{ background: '#161616', border: '1px solid #444', color: 'white', padding: '4px 6px', fontSize: '12px', width: '140px' }}
-                          />
-                          <button
-                            type="button"
-                            onClick={() => handleGuardarCategoriaEditada(cat.id)}
-                            style={{ background: 'var(--accent-gold)', border: 'none', color: '#121212', padding: '4px 8px', fontSize: '11px', fontWeight: 600, cursor: 'pointer' }}
-                          >
-                            Guardar
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setCategoriaEditandoId(null)}
-                            style={{ background: 'transparent', border: 'none', color: '#888', padding: '4px 6px', fontSize: '11px', cursor: 'pointer' }}
-                          >
-                            Cancelar
-                          </button>
-                        </>
-                      ) : (
-                        <>
-                          <span>{cat.nombre}</span>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setCategoriaEditandoId(cat.id);
-                              setCategoriaEditandoNombre(cat.nombre);
-                            }}
-                            title="Renombrar"
-                            style={{ background: 'transparent', border: 'none', color: '#a0a0a0', padding: '4px 6px', fontSize: '11px', cursor: 'pointer' }}
-                          >
-                            Editar
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleEliminarCategoria(cat)}
-                            title="Eliminar"
-                            style={{ background: 'transparent', border: 'none', color: '#ff4d4d', padding: '4px 6px', fontSize: '11px', cursor: 'pointer' }}
-                          >
-                            Eliminar
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              <form onSubmit={handleCrearCategoria} style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                <input
-                  type="text"
-                  value={nuevaCategoriaNombre}
-                  onChange={(e) => setNuevaCategoriaNombre(e.target.value)}
-                  placeholder="Ej: Bebidas Sin Alcohol"
-                  style={{ background: '#0d0d0d', border: '1px solid #333', color: 'white', padding: '10px 12px', fontSize: '13px', flex: 1, minWidth: '200px' }}
-                />
-                <button
-                  type="submit"
-                  disabled={guardandoCategoria || !nuevaCategoriaNombre.trim()}
-                  style={{
-                    background: 'var(--accent-gold)',
-                    color: '#121212',
-                    border: 'none',
-                    padding: '10px 18px',
-                    fontWeight: 600,
-                    fontSize: '12px',
-                    cursor: guardandoCategoria || !nuevaCategoriaNombre.trim() ? 'not-allowed' : 'pointer',
-                    opacity: guardandoCategoria || !nuevaCategoriaNombre.trim() ? 0.5 : 1,
-                    textTransform: 'uppercase'
-                  }}
-                >
-                  {guardandoCategoria ? 'Guardando...' : '+ Nueva Categoría'}
-                </button>
-              </form>
-            </div>
-
-            {/* LISTADO DE PRODUCTOS */}
-            <div style={{ background: '#161616', border: '1px solid #222', borderRadius: '0px', overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
-                <thead>
-                  <tr style={{ borderBottom: '1px solid #222', color: '#888' }}>
-                    <th style={{ padding: '16px 20px' }}>Imagen</th>
-                    <th style={{ padding: '16px 20px' }}>Nombre</th>
-                    <th style={{ padding: '16px 20px' }}>Categoría</th>
-                    <th style={{ padding: '16px 20px' }}>Precio</th>
-                    <th style={{ padding: '16px 20px' }}>Stock</th>
-                    <th style={{ padding: '16px 20px' }}>Mínimo</th>
-                    <th style={{ padding: '16px 20px', textAlign: 'right' }}>Acciones</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {productosList.length === 0 ? (
-                    <tr>
-                      <td colSpan={7} style={{ padding: '32px', textAlign: 'center', color: '#666' }}>
-                        No hay productos registrados. Usá el botón de arriba o inicializá la base de datos más abajo.
-                      </td>
-                    </tr>
+                  {categoriasList.length === 0 ? (
+                    <p className="text-xs text-ink-soft italic mb-3.5">Todavía no hay categorías cargadas.</p>
                   ) : (
-                    productosList.map((prod) => {
-                      const esBajoStock = prod.stock !== null && prod.stock <= (prod.stock_minimo ?? 0);
-                      const esAgotado = prod.stock !== null && prod.stock <= 0;
-                      
-                      return (
-                        <tr key={prod.id} style={{ borderBottom: '1px solid #222', transition: 'background 0.2s' }}>
-                          <td style={{ padding: '12px 20px' }}>
-                            <div style={{ position: 'relative', width: '40px', height: '40px', background: '#222', border: '1px solid #333' }}>
-                              {prod.imagen_url && (
-                                <img src={prod.imagen_url} alt={prod.nombre} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                              )}
-                            </div>
-                          </td>
-                          <td style={{ padding: '12px 20px' }}>
-                            <span style={{ fontWeight: 600, display: 'block', color: 'white' }}>{prod.nombre}</span>
-                            <span style={{ fontSize: '11px', color: '#888', display: 'block', maxWidth: '280px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                              {prod.descripcion}
-                            </span>
-                          </td>
-                          <td style={{ padding: '12px 20px', color: '#a0a0a0' }}>{prod.categoria?.nombre || '-'}</td>
-                          <td style={{ padding: '12px 20px', fontWeight: 600, color: 'var(--accent-gold)' }}>
-                            ${Number(prod.precio).toLocaleString('es-AR')}
-                          </td>
-                          <td style={{ padding: '12px 20px' }}>
-                            {prod.stock === null ? (
-                              <span style={{ color: '#888' }}>Ilimitado</span>
-                            ) : esAgotado ? (
-                              <span style={{ background: 'rgba(220, 38, 38, 0.15)', color: '#ff4d4d', padding: '3px 8px', fontWeight: 'bold', fontSize: '11px' }}>
-                                AGOTADO (0)
-                              </span>
-                            ) : esBajoStock ? (
-                              <span style={{ background: 'rgba(217, 119, 6, 0.15)', color: '#f59e0b', padding: '3px 8px', fontWeight: 'bold', fontSize: '11px' }}>
-                                BAJO STOCK ({prod.stock})
-                              </span>
-                            ) : (
-                              <span style={{ color: '#2b9348', fontWeight: 600 }}>{prod.stock} u.</span>
-                            )}
-                          </td>
-                          <td style={{ padding: '12px 20px', color: '#666' }}>{prod.stock === null ? '-' : `${prod.stock_minimo} u.`}</td>
-                          <td style={{ padding: '12px 20px', textAlign: 'right' }}>
-                            <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-                              <button
+                    <div className="flex flex-wrap gap-2 mb-4">
+                      {categoriasList.map((cat) => (
+                        <div
+                          key={cat.id}
+                          className="flex items-center gap-2 rounded-md border border-line bg-cream py-1.5 pl-3 pr-1.5 text-xs"
+                        >
+                          {categoriaEditandoId === cat.id ? (
+                            <>
+                              <input
+                                type="text"
+                                autoFocus
+                                value={categoriaEditandoNombre}
+                                onChange={(e) => setCategoriaEditandoNombre(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') handleGuardarCategoriaEditada(cat.id);
+                                  if (e.key === 'Escape') setCategoriaEditandoId(null);
+                                }}
+                                className="rounded border border-line bg-card text-ink px-2 py-1 text-xs w-36"
+                              />
+                              <Button size="sm" variant="secondary" onClick={() => handleGuardarCategoriaEditada(cat.id)}>Guardar</Button>
+                              <Button size="sm" variant="ghost" onClick={() => setCategoriaEditandoId(null)}>Cancelar</Button>
+                            </>
+                          ) : (
+                            <>
+                              <span>{cat.nombre}</span>
+                              <IconButton
+                                label={`Renombrar categoría ${cat.nombre}`}
+                                icon={Pencil}
+                                variant="ghost"
+                                size="sm"
+                                className="!w-7 !h-7"
                                 onClick={() => {
-                                  setProductoEditando(prod);
-                                  setFormNombre(prod.nombre);
-                                  setFormDescripcion(prod.descripcion || '');
-                                  setFormPrecio(prod.precio.toString());
-                                  setFormImagenUrl(prod.imagen_url || '');
-                                  setFormCategoriaId(prod.categoria_id?.toString() || '');
-                                  setFormStock(prod.stock !== null ? prod.stock.toString() : '');
-                                  setFormStockMinimo((prod.stock_minimo ?? 2).toString());
-                                  setFormEsCafe(prod.es_cafe);
-                                  setFormDisponible(prod.disponible);
-                                  setErrorSubidaImagen('');
-                                  setMostrarFormProducto(true);
+                                  setCategoriaEditandoId(cat.id);
+                                  setCategoriaEditandoNombre(cat.nombre);
                                 }}
-                                style={{
-                                  background: 'transparent',
-                                  border: '1px solid #444',
-                                  color: '#ccc',
-                                  padding: '8px 14px',
-                                  cursor: 'pointer',
-                                  fontSize: '12px',
-                                  textTransform: 'uppercase'
-                                }}
-                              >
-                                Editar
-                              </button>
-                              <button
-                                onClick={async () => {
-                                  if (confirm(`¿Seguro que querés eliminar el producto "${prod.nombre}"?`)) {
-                                    const res = await eliminarProducto(prod.id);
-                                    if (res.success) {
-                                      cargarDatosCompletos();
-                                    } else {
-                                      alert('Error al eliminar: ' + res.error);
-                                    }
-                                  }
-                                }}
-                                style={{
-                                  background: 'transparent',
-                                  border: '1px solid #ff4d4d',
-                                  color: '#ff4d4d',
-                                  padding: '8px 14px',
-                                  cursor: 'pointer',
-                                  fontSize: '12px',
-                                  textTransform: 'uppercase'
-                                }}
-                              >
-                                Eliminar
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })
+                              />
+                              <IconButton
+                                label={`Eliminar categoría ${cat.nombre}`}
+                                icon={Trash2}
+                                variant="ghost"
+                                size="sm"
+                                className="!w-7 !h-7 !text-danger"
+                                onClick={() => handleEliminarCategoria(cat)}
+                              />
+                            </>
+                          )}
+                        </div>
+                      ))}
+                    </div>
                   )}
-                </tbody>
-              </table>
+
+                  <form onSubmit={handleCrearCategoria} className="flex gap-2 flex-wrap">
+                    <input
+                      type="text"
+                      value={nuevaCategoriaNombre}
+                      onChange={(e) => setNuevaCategoriaNombre(e.target.value)}
+                      placeholder="Ej: Bebidas Sin Alcohol"
+                      className="flex-1 min-w-[200px] min-h-[44px] rounded-md border border-line bg-cream px-3 text-sm"
+                    />
+                    <Button
+                      type="submit"
+                      variant="secondary"
+                      loading={guardandoCategoria}
+                      disabled={!nuevaCategoriaNombre.trim()}
+                    >
+                      + Nueva Categoría
+                    </Button>
+                  </form>
+                </div>
+
+                {/* LISTADO DE PRODUCTOS */}
+                <div className="rounded-lg border border-line bg-card overflow-hidden">
+                  {productosList.length === 0 ? (
+                    <EmptyState
+                      icon={Database}
+                      title="No hay productos registrados"
+                      description="Usá el botón de arriba o inicializá la base de datos más abajo."
+                    />
+                  ) : (
+                    <>
+                      {/* Tabla (>= md) */}
+                      <div className="hidden md:block overflow-x-auto">
+                        <table className="w-full text-left text-sm border-collapse">
+                          <thead>
+                            <tr className="border-b border-line text-ink-soft">
+                              <th className="py-4 px-5">Imagen</th>
+                              <th className="py-4 px-5">Nombre</th>
+                              <th className="py-4 px-5">Categoría</th>
+                              <th className="py-4 px-5">Precio</th>
+                              <th className="py-4 px-5">Stock</th>
+                              <th className="py-4 px-5">Mínimo</th>
+                              <th className="py-4 px-5 text-right">Acciones</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {productosList.map((prod) => {
+                              const esBajoStock = prod.stock !== null && prod.stock <= (prod.stock_minimo ?? 0);
+                              const esAgotado = prod.stock !== null && prod.stock <= 0;
+                              return (
+                                <tr key={prod.id} className="border-b border-line last:border-b-0">
+                                  <td className="py-3 px-5">
+                                    <div className="w-10 h-10 rounded bg-cream border border-line overflow-hidden">
+                                      {prod.imagen_url && (
+                                        // eslint-disable-next-line @next/next/no-img-element
+                                        <img src={prod.imagen_url} alt={prod.nombre} className="w-full h-full object-cover" />
+                                      )}
+                                    </div>
+                                  </td>
+                                  <td className="py-3 px-5 max-w-[280px]">
+                                    <span className="block font-semibold">{prod.nombre}</span>
+                                    <span className="block text-[11px] text-ink-soft truncate">{prod.descripcion}</span>
+                                  </td>
+                                  <td className="py-3 px-5 text-ink-soft">{prod.categoria?.nombre || '-'}</td>
+                                  <td className="py-3 px-5 font-semibold text-gold">${Number(prod.precio).toLocaleString('es-AR')}</td>
+                                  <td className="py-3 px-5">
+                                    {prod.stock === null ? (
+                                      <span className="text-ink-soft">Ilimitado</span>
+                                    ) : esAgotado ? (
+                                      <Badge tone="danger">AGOTADO (0)</Badge>
+                                    ) : esBajoStock ? (
+                                      <Badge tone="warning">BAJO STOCK ({prod.stock})</Badge>
+                                    ) : (
+                                      <span className="text-success font-semibold">{prod.stock} u.</span>
+                                    )}
+                                  </td>
+                                  <td className="py-3 px-5 text-ink-soft">{prod.stock === null ? '-' : `${prod.stock_minimo} u.`}</td>
+                                  <td className="py-3 px-5 text-right">
+                                    <div className="flex gap-2 justify-end">
+                                      <Button size="sm" variant="outline" onClick={() => abrirEdicionProducto(prod)}>Editar</Button>
+                                      <Button size="sm" variant="outline" className="!text-danger" onClick={() => handleEliminarProducto(prod)}>Eliminar</Button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      {/* Tarjetas (< md) */}
+                      <div className="md:hidden flex flex-col divide-y divide-line">
+                        {productosList.map((prod) => {
+                          const esBajoStock = prod.stock !== null && prod.stock <= (prod.stock_minimo ?? 0);
+                          const esAgotado = prod.stock !== null && prod.stock <= 0;
+                          return (
+                            <div key={prod.id} className="p-4">
+                              <div className="flex gap-3 mb-3">
+                                <div className="w-12 h-12 rounded bg-cream border border-line overflow-hidden shrink-0">
+                                  {prod.imagen_url && (
+                                    // eslint-disable-next-line @next/next/no-img-element
+                                    <img src={prod.imagen_url} alt={prod.nombre} className="w-full h-full object-cover" />
+                                  )}
+                                </div>
+                                <div className="min-w-0">
+                                  <p className="font-semibold truncate">{prod.nombre}</p>
+                                  <p className="text-[11px] text-ink-soft line-clamp-2">{prod.descripcion}</p>
+                                </div>
+                              </div>
+                              <dl className="grid grid-cols-2 gap-y-1.5 text-xs mb-3">
+                                <dt className="text-ink-soft">Categoría</dt>
+                                <dd className="text-right">{prod.categoria?.nombre || '-'}</dd>
+                                <dt className="text-ink-soft">Precio</dt>
+                                <dd className="text-right font-semibold text-gold">${Number(prod.precio).toLocaleString('es-AR')}</dd>
+                                <dt className="text-ink-soft">Stock</dt>
+                                <dd className="text-right">
+                                  {prod.stock === null ? 'Ilimitado' : esAgotado ? <Badge tone="danger">AGOTADO</Badge> : esBajoStock ? <Badge tone="warning">BAJO ({prod.stock})</Badge> : `${prod.stock} u.`}
+                                </dd>
+                                <dt className="text-ink-soft">Mínimo</dt>
+                                <dd className="text-right">{prod.stock === null ? '-' : `${prod.stock_minimo} u.`}</dd>
+                              </dl>
+                              <div className="flex gap-2">
+                                <Button size="md" variant="outline" fullWidth onClick={() => abrirEdicionProducto(prod)}>Editar</Button>
+                                <Button size="md" variant="outline" fullWidth className="!text-danger" onClick={() => handleEliminarProducto(prod)}>Eliminar</Button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                {/* SEEDER DE EMERGENCIA */}
+                <div className="mt-2 border-t border-line pt-5">
+                  <div className="rounded-lg border border-line bg-card p-6">
+                    <h4 className="text-xs font-semibold text-ink-soft uppercase mb-2">Inicialización del Sistema</h4>
+                    <p className="text-xs text-ink-soft leading-snug mb-4">
+                      Si recién instalás la base de datos, podés recargar los productos iniciales de {BRAND_CONFIG.name} ({BRAND_CONFIG.subtitle}, Viennoiserie, Cafés, Salados).
+                    </p>
+                    <Button variant="outline" loading={seeding} onClick={handleSeed}>
+                      {seeding ? 'Cargando Mocks...' : 'Sembrar Catálogo Inicial'}
+                    </Button>
+                    {seedingMsg && <p className="text-xs text-gold mt-2">{seedingMsg}</p>}
+                  </div>
+                </div>
+              </div>
+            )}
+
+          </main>
+        </div>
+
+        {/* BARRA DE TABS (MOBILE, < 768px) */}
+        <nav className="no-print md:hidden fixed bottom-0 inset-x-0 z-40 flex overflow-x-auto no-scrollbar bg-ink text-cream border-t border-white/10">
+          {visibleNavItems.map(tab => {
+            const Icon = tab.icon;
+            const activo = tabActiva === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setTabActiva(tab.id)}
+                className={[
+                  'flex flex-col items-center justify-center gap-1 flex-1 min-w-[78px] min-h-[56px] px-2 py-2 text-[10px] font-medium whitespace-nowrap',
+                  activo ? 'text-gold' : 'text-cream/60',
+                ].join(' ')}
+              >
+                <Icon size={18} />
+                <span>{tab.label}</span>
+              </button>
+            );
+          })}
+        </nav>
+      </div>
+
+      {/* MODAL PARA IMPRIMIR TICKET (PRE-CUENTA DE MESA) */}
+      <Modal
+        open={!!mesaTicketImprimir}
+        onClose={() => setMesaTicketImprimir(null)}
+        title={mesaTicketImprimir ? `Pre-Cuenta — Mesa ${mesaTicketImprimir.numero}` : ''}
+        size="sm"
+        footer={
+          <div className="flex gap-2 no-print">
+            <Button variant="outline" fullWidth onClick={() => setMesaTicketImprimir(null)}>Cerrar</Button>
+            <Button variant="secondary" fullWidth icon={Printer} onClick={() => window.print()}>Imprimir</Button>
+          </div>
+        }
+      >
+        {mesaTicketImprimir && (
+          <div className="ticket-printable-container rounded-md border border-dashed border-line bg-white p-4 font-mono text-[13px] leading-relaxed text-black">
+            <div className="text-center mb-4">
+              <h3 className="text-lg font-bold">{BRAND_CONFIG.ticketHeader}</h3>
+              <p className="text-[10px] uppercase tracking-wide text-gray-600">{BRAND_CONFIG.subtitle}</p>
+              <p className="text-[10px] text-gray-600">{BRAND_CONFIG.address}</p>
+              <p className="mt-2 border-y border-dashed border-black py-1 font-bold">DETALLE DE CONSUMOS</p>
             </div>
 
-            {/* SEEDER DE EMERGENCIA */}
-            <div style={{ marginTop: '24px', borderTop: '1px solid #222', paddingTop: '24px' }}>
-              <div style={{ background: '#161616', border: '1px solid #222', borderRadius: '0px', padding: '24px' }}>
-                <h4 style={{ fontSize: '13px', fontWeight: 600, color: '#888', marginBottom: '8px', textTransform: 'uppercase' }}>
-                  Inicialización del Sistema
-                </h4>
-                <p style={{ fontSize: '12px', color: '#666', marginBottom: '16px', lineHeight: '1.4' }}>
-                  Si recién instalás la base de datos, podés recargar los productos iniciales de {BRAND_CONFIG.name} ({BRAND_CONFIG.subtitle}, Viennoiserie, Cafés, Salados).
-                </p>
-                <button
-                  onClick={handleSeed}
-                  disabled={seeding}
-                  style={{
-                    background: '#222',
-                    border: '1px solid #333',
-                    color: 'white',
-                    padding: '8px 16px',
-                    fontSize: '12px',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    textTransform: 'uppercase'
-                  }}
-                >
-                  {seeding ? 'Cargando Mocks...' : 'Sembrar Catálogo Inicial'}
-                </button>
-                {seedingMsg && <p style={{ fontSize: '12px', color: 'var(--accent-gold)', marginTop: '8px' }}>{seedingMsg}</p>}
+            <div className="mb-3">
+              <div><b>MESA:</b> {mesaTicketImprimir.numero}</div>
+              <div><b>CLIENTE:</b> {mesaTicketImprimir.cliente_nombre || 'N/A'}</div>
+              {mesaTicketImprimir.cliente_telefono && <div><b>TELÉFONO:</b> {mesaTicketImprimir.cliente_telefono}</div>}
+              <div><b>FECHA:</b> {mesaTicketImprimir.ocupada_desde ? new Date(mesaTicketImprimir.ocupada_desde).toLocaleDateString('es-AR') : ''}</div>
+              <div><b>HORA ENTRADA:</b> {mesaTicketImprimir.ocupada_desde ? new Date(mesaTicketImprimir.ocupada_desde).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) : ''}</div>
+            </div>
+
+            <div className="border-t border-dashed border-black pt-2 mb-2">
+              <div className="flex justify-between font-bold mb-1">
+                <span>DESCRIPCIÓN</span>
+                <span>TOTAL</span>
               </div>
+              {consumosConsolidados.map((item, idx) => (
+                <div key={idx} className="mb-1">
+                  <div className="flex justify-between">
+                    <span>{item.cantidad}x {item.nombre}</span>
+                    <span>${(item.precioUnitario * item.cantidad).toLocaleString('es-AR')}</span>
+                  </div>
+                  {item.observaciones && (
+                    <div className="text-[11px] text-gray-600 italic pl-2.5">* {item.observaciones}</div>
+                  )}
+                  <div className="text-[11px] text-gray-500 pl-2.5">(${item.precioUnitario.toLocaleString('es-AR')} c/u)</div>
+                </div>
+              ))}
+            </div>
+
+            <div className="border-t border-dashed border-black pt-2 mt-3 flex justify-between text-sm font-bold">
+              <span>TOTAL:</span>
+              <span>${totalTicket.toLocaleString('es-AR')}</span>
+            </div>
+
+            <div className="text-center mt-5 text-[11px] text-gray-600">
+              <p>{BRAND_CONFIG.ticketFooter}</p>
+              <p className="mt-1">Documento no válido como factura</p>
             </div>
           </div>
         )}
-
-      </main>
-
-      {/* MODAL PARA IMPRIMIR TICKET */}
-      {mesaTicketImprimir && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: 'rgba(0, 0, 0, 0.85)',
-          zIndex: 100,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: '20px'
-        }} className="no-print-overlay">
-          <div style={{
-            background: 'white',
-            color: 'black',
-            borderRadius: '0px', // Bordes rectos
-            padding: '24px',
-            width: '100%',
-            maxWidth: '380px',
-            boxShadow: '0 10px 40px rgba(0,0,0,0.5)',
-            display: 'flex',
-            flexDirection: 'column'
-          }} className="ticket-printable-container">
-            
-            {/* TICKET MESA */}
-            <div style={{
-              border: '1px dashed #333',
-              padding: '16px',
-              fontFamily: 'monospace',
-              fontSize: '13px',
-              lineHeight: '1.4',
-              color: '#000'
-            }}>
-              <div style={{ textAlign: 'center', marginBottom: '16px' }}>
-                <h3 style={{ fontSize: '18px', fontWeight: 'bold', margin: 0 }}>{BRAND_CONFIG.ticketHeader}</h3>
-                <p style={{ fontSize: '10px', margin: '2px 0 0', textTransform: 'uppercase', letterSpacing: '1px', color: '#555' }}>{BRAND_CONFIG.subtitle}</p>
-                <p style={{ fontSize: '10px', margin: '1px 0 0', color: '#555' }}>{BRAND_CONFIG.address}</p>
-                <p style={{ margin: '8px 0 0', borderTop: '1px dashed #000', borderBottom: '1px dashed #000', padding: '4px 0', fontWeight: 'bold' }}>
-                  DETALLE DE CONSUMOS
-                </p>
-              </div>
-
-              <div style={{ marginBottom: '12px' }}>
-                <div><b>MESA:</b> {mesaTicketImprimir.numero}</div>
-                <div><b>CLIENTE:</b> {mesaTicketImprimir.cliente_nombre || 'N/A'}</div>
-                {mesaTicketImprimir.cliente_telefono && <div><b>TELÉFONO:</b> {mesaTicketImprimir.cliente_telefono}</div>}
-                <div><b>FECHA:</b> {mesaTicketImprimir.ocupada_desde ? new Date(mesaTicketImprimir.ocupada_desde).toLocaleDateString('es-AR') : ''}</div>
-                <div><b>HORA ENTRADA:</b> {mesaTicketImprimir.ocupada_desde ? new Date(mesaTicketImprimir.ocupada_desde).toLocaleTimeString('es-AR', {hour:'2-digit', minute:'2-digit'}) : ''}</div>
-              </div>
-
-              <div style={{ borderTop: '1px dashed #000', paddingTop: '8px', marginBottom: '8px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', marginBottom: '4px' }}>
-                  <span>DESCRIPCIÓN</span>
-                  <span>TOTAL</span>
-                </div>
-                {consumosConsolidados.map((item, idx) => (
-                  <div key={idx} style={{ marginBottom: '4px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span>{item.cantidad}x {item.nombre}</span>
-                      <span>${(item.precioUnitario * item.cantidad).toLocaleString('es-AR')}</span>
-                    </div>
-                    {item.observaciones && (
-                      <div style={{ fontSize: '11px', color: '#555', fontStyle: 'italic', paddingLeft: '10px' }}>
-                        * {item.observaciones}
-                      </div>
-                    )}
-                    <div style={{ fontSize: '11px', color: '#666', paddingLeft: '10px' }}>
-                      (${item.precioUnitario.toLocaleString('es-AR')} c/u)
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <div style={{ borderTop: '1px dashed #000', paddingTop: '8px', marginTop: '12px', display: 'flex', justifyContent: 'space-between', fontSize: '14px', fontWeight: 'bold' }}>
-                <span>TOTAL:</span>
-                <span>${totalTicket.toLocaleString('es-AR')}</span>
-              </div>
-
-              <div style={{ textAlign: 'center', marginTop: '24px', fontSize: '11px', color: '#555' }}>
-                <p>{BRAND_CONFIG.ticketFooter}</p>
-                <p style={{ marginTop: '4px' }}>Documento no válido como factura</p>
-              </div>
-            </div>
-
-            {/* BOTONES ACCION */}
-            <div style={{ display: 'flex', gap: '8px', marginTop: '20px' }} className="no-print">
-              <button
-                onClick={() => setMesaTicketImprimir(null)}
-                style={{
-                  flex: 1,
-                  background: '#eae6df',
-                  border: 'none',
-                  borderRadius: '0px',
-                  padding: '12px',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  color: '#121212',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.5px'
-                }}
-              >
-                Cerrar
-              </button>
-              <button
-                onClick={() => window.print()}
-                style={{
-                  flex: 2,
-                  background: 'var(--accent-gold)',
-                  border: 'none',
-                  borderRadius: '0px',
-                  padding: '12px',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  color: '#121212',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '6px',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.5px'
-                }}
-              >
-                <Printer size={16} />
-                <span>Imprimir</span>
-              </button>
-            </div>
-
-          </div>
-        </div>
-      )}
+      </Modal>
 
       {/* MODAL PARA CREAR/EDITAR PRODUCTO */}
-      {mostrarFormProducto && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: 'rgba(0, 0, 0, 0.8)',
-          zIndex: 100,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: '20px'
-        }}>
-          <div style={{
-            background: '#161616',
-            border: '1px solid #333',
-            color: 'white',
-            borderRadius: '0px',
-            padding: '32px',
-            width: '100%',
-            maxWidth: '500px',
-            maxHeight: '90vh',
-            overflowY: 'auto',
-            boxShadow: '0 10px 40px rgba(0,0,0,0.8)'
-          }}>
-            <h3 style={{ fontSize: '16px', fontWeight: 600, textTransform: 'uppercase', marginBottom: '24px', letterSpacing: '0.5px', color: 'var(--accent-gold)' }}>
-              {productoEditando ? `Editar Producto: ${productoEditando.nombre}` : 'Agregar Nuevo Producto'}
-            </h3>
-
-            <form onSubmit={handleProductoSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                <label style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase' }}>Nombre *</label>
-                <input
-                  type="text"
-                  required
-                  value={formNombre}
-                  onChange={(e) => setFormNombre(e.target.value)}
-                  style={{ background: '#0d0d0d', border: '1px solid #333', color: 'white', padding: '10px', fontSize: '13px' }}
-                />
-              </div>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                <label style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase' }}>Descripción</label>
-                <textarea
-                  value={formDescripcion}
-                  onChange={(e) => setFormDescripcion(e.target.value)}
-                  style={{ background: '#0d0d0d', border: '1px solid #333', color: 'white', padding: '10px', fontSize: '13px', minHeight: '60px', fontFamily: 'inherit' }}
-                />
-              </div>
-
-              <div className="admin-form-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                  <label style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase' }}>Precio ($) *</label>
-                  <input
-                    type="number"
-                    required
-                    value={formPrecio}
-                    onChange={(e) => setFormPrecio(e.target.value)}
-                    style={{ background: '#0d0d0d', border: '1px solid #333', color: 'white', padding: '10px', fontSize: '13px' }}
-                  />
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                  <label style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase' }}>Categoría *</label>
-                  <select
-                    value={formCategoriaId}
-                    onChange={(e) => setFormCategoriaId(e.target.value)}
-                    style={{ background: '#0d0d0d', border: '1px solid #333', color: 'white', padding: '10px', fontSize: '13px' }}
-                  >
-                    <option value="">Seleccionar...</option>
-                    {categoriasList.map((cat) => (
-                      <option key={cat.id} value={cat.id}>{cat.nombre}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                <label style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase' }}>Foto del Producto</label>
-
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-                  {formImagenUrl && (
-                    <div style={{ position: 'relative', width: '56px', height: '56px', background: '#0d0d0d', border: '1px solid #333', flexShrink: 0 }}>
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={formImagenUrl} alt="Vista previa" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                    </div>
-                  )}
-
-                  <label style={{
-                    background: '#222',
-                    border: '1px solid #444',
-                    color: 'white',
-                    padding: '10px 16px',
-                    fontSize: '12px',
-                    fontWeight: 600,
-                    cursor: subiendoImagen ? 'not-allowed' : 'pointer',
-                    opacity: subiendoImagen ? 0.6 : 1,
-                    textTransform: 'uppercase'
-                  }}>
-                    {subiendoImagen ? 'Subiendo...' : 'Elegir foto desde el celular / PC'}
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={handleSeleccionarImagen}
-                      disabled={subiendoImagen}
-                      style={{ display: 'none' }}
-                    />
-                  </label>
-                </div>
-
-                {errorSubidaImagen && (
-                  <p style={{ fontSize: '11px', color: '#ff4d4d' }}>{errorSubidaImagen}</p>
-                )}
-
-                <input
-                  type="text"
-                  value={formImagenUrl}
-                  onChange={(e) => setFormImagenUrl(e.target.value)}
-                  placeholder="O pegá una URL de imagen (opcional)"
-                  style={{ background: '#0d0d0d', border: '1px solid #333', color: 'white', padding: '10px', fontSize: '13px' }}
-                />
-              </div>
-
-              <div className="admin-form-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                  <label style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase' }}>Stock (Vacío = Ilimitado)</label>
-                  <input
-                    type="number"
-                    value={formStock}
-                    onChange={(e) => setFormStock(e.target.value)}
-                    placeholder="Ej: 20"
-                    style={{ background: '#0d0d0d', border: '1px solid #333', color: 'white', padding: '10px', fontSize: '13px' }}
-                  />
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                  <label style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase' }}>Stock Mínimo (Alerta)</label>
-                  <input
-                    type="number"
-                    value={formStockMinimo}
-                    onChange={(e) => setFormStockMinimo(e.target.value)}
-                    style={{ background: '#0d0d0d', border: '1px solid #333', color: 'white', padding: '10px', fontSize: '13px' }}
-                  />
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', gap: '20px', marginTop: '8px' }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
-                    checked={formEsCafe}
-                    onChange={(e) => setFormEsCafe(e.target.checked)}
-                    style={{ cursor: 'pointer' }}
-                  />
-                  <span>¿Es Café / Infusión?</span>
-                </label>
-
-                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
-                    checked={formDisponible}
-                    onChange={(e) => setFormDisponible(e.target.checked)}
-                    style={{ cursor: 'pointer' }}
-                  />
-                  <span>Disponible para Venta</span>
-                </label>
-              </div>
-
-              <div style={{ display: 'flex', gap: '10px', marginTop: '16px' }}>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setMostrarFormProducto(false);
-                    setProductoEditando(null);
-                  }}
-                  style={{
-                    flex: 1,
-                    background: '#222',
-                    border: '1px solid #333',
-                    color: 'white',
-                    padding: '12px',
-                    cursor: 'pointer',
-                    textTransform: 'uppercase',
-                    fontSize: '12px',
-                    fontWeight: 600
-                  }}
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  style={{
-                    flex: 2,
-                    background: 'var(--accent-gold)',
-                    color: '#121212',
-                    border: 'none',
-                    padding: '12px',
-                    cursor: 'pointer',
-                    textTransform: 'uppercase',
-                    fontSize: '12px',
-                    fontWeight: 600
-                  }}
-                >
-                  {productoEditando ? 'Guardar Cambios' : 'Crear Producto'}
-                </button>
-              </div>
-            </form>
+      <Modal
+        open={mostrarFormProducto}
+        onClose={() => { setMostrarFormProducto(false); setProductoEditando(null); }}
+        variant="drawer"
+        title={productoEditando ? `Editar Producto: ${productoEditando.nombre}` : 'Agregar Nuevo Producto'}
+        footer={
+          <div className="flex gap-2">
+            <Button variant="outline" fullWidth onClick={() => { setMostrarFormProducto(false); setProductoEditando(null); }}>
+              Cancelar
+            </Button>
+            <Button type="submit" form="producto-form" variant="secondary" fullWidth>
+              {productoEditando ? 'Guardar Cambios' : 'Crear Producto'}
+            </Button>
           </div>
-        </div>
-      )}
+        }
+      >
+        <form id="producto-form" onSubmit={handleProductoSubmit} className="flex flex-col gap-4">
+          <div className="flex flex-col gap-1.5">
+            <label className="text-[11px] text-ink-soft uppercase">Nombre *</label>
+            <input
+              type="text"
+              required
+              value={formNombre}
+              onChange={(e) => setFormNombre(e.target.value)}
+              className="min-h-[44px] rounded-md border border-line px-3 text-sm"
+            />
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <label className="text-[11px] text-ink-soft uppercase">Descripción</label>
+            <textarea
+              value={formDescripcion}
+              onChange={(e) => setFormDescripcion(e.target.value)}
+              className="rounded-md border border-line px-3 py-2 text-sm min-h-[70px] font-sans"
+            />
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[11px] text-ink-soft uppercase">Precio ($) *</label>
+              <input
+                type="number"
+                required
+                value={formPrecio}
+                onChange={(e) => setFormPrecio(e.target.value)}
+                className="min-h-[44px] rounded-md border border-line px-3 text-sm"
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[11px] text-ink-soft uppercase">Categoría *</label>
+              <select
+                value={formCategoriaId}
+                onChange={(e) => setFormCategoriaId(e.target.value)}
+                className="min-h-[44px] rounded-md border border-line px-3 text-sm bg-card"
+              >
+                <option value="">Seleccionar...</option>
+                {categoriasList.map((cat) => (
+                  <option key={cat.id} value={cat.id}>{cat.nombre}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <label className="text-[11px] text-ink-soft uppercase">Foto del Producto</label>
+            <div className="flex items-center gap-3 flex-wrap">
+              {formImagenUrl && (
+                <div className="w-14 h-14 rounded-md border border-line bg-cream overflow-hidden shrink-0">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={formImagenUrl} alt="Vista previa" className="w-full h-full object-cover" />
+                </div>
+              )}
+              <label className={`min-h-[44px] inline-flex items-center rounded-md border border-line px-4 text-xs font-semibold ${subiendoImagen ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}`}>
+                {subiendoImagen ? 'Subiendo...' : 'Elegir foto desde el celular / PC'}
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleSeleccionarImagen}
+                  disabled={subiendoImagen}
+                  className="hidden"
+                />
+              </label>
+            </div>
+            {errorSubidaImagen && <p className="text-[11px] text-danger">{errorSubidaImagen}</p>}
+            <input
+              type="text"
+              value={formImagenUrl}
+              onChange={(e) => setFormImagenUrl(e.target.value)}
+              placeholder="O pegá una URL de imagen (opcional)"
+              className="min-h-[44px] rounded-md border border-line px-3 text-sm"
+            />
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[11px] text-ink-soft uppercase">Stock (Vacío = Ilimitado)</label>
+              <input
+                type="number"
+                value={formStock}
+                onChange={(e) => setFormStock(e.target.value)}
+                placeholder="Ej: 20"
+                className="min-h-[44px] rounded-md border border-line px-3 text-sm"
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[11px] text-ink-soft uppercase">Stock Mínimo (Alerta)</label>
+              <input
+                type="number"
+                value={formStockMinimo}
+                onChange={(e) => setFormStockMinimo(e.target.value)}
+                className="min-h-[44px] rounded-md border border-line px-3 text-sm"
+              />
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-5 mt-1">
+            <label className="flex items-center gap-2 text-sm cursor-pointer min-h-[24px]">
+              <input type="checkbox" checked={formEsCafe} onChange={(e) => setFormEsCafe(e.target.checked)} className="w-4 h-4 cursor-pointer" />
+              <span>¿Es Café / Infusión?</span>
+            </label>
+            <label className="flex items-center gap-2 text-sm cursor-pointer min-h-[24px]">
+              <input type="checkbox" checked={formDisponible} onChange={(e) => setFormDisponible(e.target.checked)} className="w-4 h-4 cursor-pointer" />
+              <span>Disponible para Venta</span>
+            </label>
+          </div>
+        </form>
+      </Modal>
 
       {/* MODAL PARA AGREGAR CONSUMO MANUAL (DESDE CAJA) */}
-      {mostrarModalConsumoManual && mesaConsumoManual && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: 'rgba(0, 0, 0, 0.8)',
-          zIndex: 100,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: '20px'
-        }}>
-          <div style={{
-            background: '#161616',
-            border: '1px solid #333',
-            color: 'white',
-            borderRadius: '0px',
-            padding: '32px',
-            width: '100%',
-            maxWidth: '520px',
-            maxHeight: '90vh',
-            overflowY: 'auto',
-            boxShadow: '0 10px 40px rgba(0,0,0,0.8)'
-          }}>
-            <h3 style={{ fontSize: '16px', fontWeight: 600, textTransform: 'uppercase', marginBottom: '8px', letterSpacing: '0.5px', color: 'var(--accent-gold)' }}>
-              Mesa {mesaConsumoManual.numero} - Agregar Consumo Manual
-            </h3>
-            <p style={{ fontSize: '12px', color: '#a0a0a0', marginBottom: '24px' }}>
-              Registrá consumos directamente para clientes en la mesa.
-            </p>
-
-            {/* FORMULARIO AGREGAR ÍTEM TEMPORAL */}
-            <div style={{ background: '#0d0d0d', border: '1px solid #222', padding: '16px', marginBottom: '20px' }}>
-              <h4 style={{ fontSize: '12px', textTransform: 'uppercase', fontWeight: 600, color: '#888', marginBottom: '12px' }}>
-                Seleccionar Producto
-              </h4>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-                  <div style={{ flex: 2, minWidth: '180px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                    <label style={{ fontSize: '10px', color: '#666' }}>Producto</label>
+      <Modal
+        open={mostrarModalConsumoManual && !!mesaConsumoManual}
+        onClose={() => { setMostrarModalConsumoManual(false); setMesaConsumoManual(null); setItemsConsumoManual([]); }}
+        variant="drawer"
+        title={mesaConsumoManual ? `Mesa ${mesaConsumoManual.numero} — Agregar Consumo Manual` : ''}
+        subtitle="Registrá consumos directamente para clientes en la mesa."
+        footer={
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              fullWidth
+              onClick={() => { setMostrarModalConsumoManual(false); setMesaConsumoManual(null); setItemsConsumoManual([]); }}
+            >
+              Cerrar
+            </Button>
+            <Button
+              variant="secondary"
+              fullWidth
+              disabled={itemsConsumoManual.length === 0}
+              onClick={handleConfirmarConsumoManual}
+            >
+              Confirmar Consumo
+            </Button>
+          </div>
+        }
+      >
+        {mesaConsumoManual && (
+          <div className="flex flex-col gap-5">
+            <div className="rounded-md border border-line bg-cream p-4">
+              <h4 className="text-xs font-semibold text-ink-soft uppercase mb-3">Seleccionar Producto</h4>
+              <div className="flex flex-col gap-3">
+                <div className="flex gap-3 flex-wrap">
+                  <div className="flex-[2] min-w-[180px] flex flex-col gap-1">
+                    <label className="text-[10px] text-ink-soft">Producto</label>
                     <select
                       value={manualProductoSeleccionadoId}
                       onChange={(e) => setManualProductoSeleccionadoId(e.target.value)}
-                      style={{ background: '#161616', border: '1px solid #333', color: 'white', padding: '8px', fontSize: '13px' }}
+                      className="min-h-[44px] rounded-md border border-line bg-card px-2 text-sm"
                     >
                       <option value="">Selecciona un producto...</option>
                       {productosList.map((p) => {
@@ -2839,116 +2098,62 @@ export default function AdminDashboard() {
                       })}
                     </select>
                   </div>
-                  
-                  <div style={{ flex: 1, minWidth: '80px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                    <label style={{ fontSize: '10px', color: '#666' }}>Cantidad</label>
+                  <div className="flex-1 min-w-[80px] flex flex-col gap-1">
+                    <label className="text-[10px] text-ink-soft">Cantidad</label>
                     <input
                       type="number"
                       min={1}
                       value={manualCantidad}
                       onChange={(e) => setManualCantidad(Math.max(1, Number(e.target.value)))}
-                      style={{ background: '#161616', border: '1px solid #333', color: 'white', padding: '8px', fontSize: '13px', textAlign: 'center' }}
+                      className="min-h-[44px] rounded-md border border-line bg-card px-2 text-sm text-center"
                     />
                   </div>
                 </div>
 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                  <label style={{ fontSize: '10px', color: '#666' }}>Notas / Observaciones (Opcional)</label>
+                <div className="flex flex-col gap-1">
+                  <label className="text-[10px] text-ink-soft">Notas / Observaciones (Opcional)</label>
                   <input
                     type="text"
                     value={manualObservaciones}
                     onChange={(e) => setManualObservaciones(e.target.value)}
                     placeholder="Ej: Con edulcorante, bien caliente"
-                    style={{ background: '#161616', border: '1px solid #333', color: 'white', padding: '8px', fontSize: '13px' }}
+                    className="min-h-[44px] rounded-md border border-line bg-card px-2 text-sm"
                   />
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (!manualProductoSeleccionadoId) {
-                      alert('Seleccioná un producto.');
-                      return;
-                    }
-                    const prod = productosList.find(p => p.id === Number(manualProductoSeleccionadoId));
-                    if (!prod) return;
-
-                    // Validar stock local antes de agregar a la lista temporal
-                    if (prod.stock !== null && prod.stock < manualCantidad) {
-                      alert(`No hay stock suficiente para ${prod.nombre}. Disponible: ${prod.stock} unidades.`);
-                      return;
-                    }
-
-                    // Agregar
-                    setItemsConsumoManual(prev => {
-                      const existe = prev.find(item => item.producto.id === prod.id && item.observaciones === manualObservaciones);
-                      if (existe) {
-                        return prev.map(item =>
-                          item.producto.id === prod.id && item.observaciones === manualObservaciones
-                            ? { ...item, cantidad: item.cantidad + manualCantidad }
-                            : item
-                        );
-                      }
-                      return [...prev, { producto: prod, cantidad: manualCantidad, observaciones: manualObservaciones || undefined }];
-                    });
-
-                    // Limpiar campos temporales
-                    setManualCantidad(1);
-                    setManualObservaciones('');
-                  }}
-                  style={{
-                    background: '#222',
-                    border: '1px solid #333',
-                    color: 'white',
-                    padding: '8px',
-                    fontSize: '11px',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    textTransform: 'uppercase',
-                    marginTop: '4px'
-                  }}
-                >
+                <Button type="button" variant="outline" size="md" onClick={handleAgregarItemConsumoManual}>
                   Agregar a la Lista
-                </button>
+                </Button>
               </div>
             </div>
 
-            {/* LISTA TEMPORAL DE CONSUMOS A AGREGAR */}
             <div>
-              <h4 style={{ fontSize: '12px', textTransform: 'uppercase', fontWeight: 600, color: '#888', marginBottom: '10px' }}>
-                Resumen de Consumo a Cargar
-              </h4>
-              
+              <h4 className="text-xs font-semibold text-ink-soft uppercase mb-2.5">Resumen de Consumo a Cargar</h4>
               {itemsConsumoManual.length === 0 ? (
-                <p style={{ fontSize: '12px', color: '#555', fontStyle: 'italic', textAlign: 'center', padding: '16px 0' }}>
-                  Aún no agregaste productos a la lista.
-                </p>
+                <p className="text-xs text-ink-soft italic text-center py-4">Aún no agregaste productos a la lista.</p>
               ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '24px' }}>
+                <div className="flex flex-col gap-2">
                   {itemsConsumoManual.map((item, idx) => (
-                    <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '13px', borderBottom: '1px solid #222', paddingBottom: '6px' }}>
-                      <div>
+                    <div key={idx} className="flex justify-between items-center gap-2 text-sm border-b border-line pb-1.5">
+                      <div className="min-w-0">
                         <b>{item.cantidad}x {item.producto.nombre}</b>
-                        {item.observaciones && <span style={{ display: 'block', fontSize: '11px', color: 'var(--accent-gold)', fontStyle: 'italic' }}>({item.observaciones})</span>}
+                        {item.observaciones && <span className="block text-[11px] text-gold italic">({item.observaciones})</span>}
                       </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <div className="flex items-center gap-3 shrink-0">
                         <span>${(item.producto.precio * item.cantidad).toLocaleString('es-AR')}</span>
                         <button
                           type="button"
-                          onClick={() => {
-                            setItemsConsumoManual(prev => prev.filter((_, i) => i !== idx));
-                          }}
-                          style={{ background: 'transparent', border: 'none', color: '#ff4d4d', cursor: 'pointer', fontSize: '11px' }}
+                          onClick={() => setItemsConsumoManual(prev => prev.filter((_, i) => i !== idx))}
+                          className="text-danger text-xs min-h-[32px] px-1"
                         >
                           Eliminar
                         </button>
                       </div>
                     </div>
                   ))}
-                  
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', fontWeight: 600, paddingTop: '10px', color: 'white' }}>
+                  <div className="flex justify-between text-sm font-semibold pt-2">
                     <span>Total Consumo:</span>
-                    <span style={{ color: 'var(--accent-gold)' }}>
+                    <span className="text-gold">
                       ${itemsConsumoManual.reduce((sum, item) => sum + (item.producto.precio * item.cantidad), 0).toLocaleString('es-AR')}
                     </span>
                   </div>
@@ -2956,332 +2161,194 @@ export default function AdminDashboard() {
               )}
             </div>
 
-            {/* CONTROL DE ENTREGA / ENVÍO A COCINA */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', borderTop: '1px solid #222', paddingTop: '16px', marginTop: '16px' }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', cursor: 'pointer' }}>
-                <input
-                  type="checkbox"
-                  checked={manualEnviarACocina}
-                  onChange={(e) => setManualEnviarACocina(e.target.checked)}
-                  style={{ cursor: 'pointer' }}
-                />
+            <div className="flex flex-col gap-2 border-t border-line pt-4">
+              <label className="flex items-center gap-2 text-sm cursor-pointer">
+                <input type="checkbox" checked={manualEnviarACocina} onChange={(e) => setManualEnviarACocina(e.target.checked)} className="w-4 h-4 cursor-pointer" />
                 <span>Enviar comanda a la Cocina (Estado: Pendiente)</span>
               </label>
-              <span style={{ fontSize: '11px', color: '#666', marginTop: '-6px' }}>
+              <span className="text-[11px] text-ink-soft -mt-1">
                 * Si está desactivado, el pedido se cargará directamente a la mesa como ya entregado (estado: Servido).
               </span>
             </div>
-
-            {/* BOTONES DE CONFIRMACIÓN */}
-            <div style={{ display: 'flex', gap: '10px', marginTop: '24px' }}>
-              <button
-                type="button"
-                onClick={() => {
-                  setMostrarModalConsumoManual(false);
-                  setMesaConsumoManual(null);
-                  setItemsConsumoManual([]);
-                }}
-                style={{
-                  flex: 1,
-                  background: '#222',
-                  border: '1px solid #333',
-                  color: 'white',
-                  padding: '12px',
-                  cursor: 'pointer',
-                  textTransform: 'uppercase',
-                  fontSize: '12px',
-                  fontWeight: 600
-                }}
-              >
-                Cerrar
-              </button>
-              <button
-                type="button"
-                disabled={itemsConsumoManual.length === 0}
-                onClick={handleConfirmarConsumoManual}
-                style={{
-                  flex: 2,
-                  background: 'var(--accent-gold)',
-                  color: '#121212',
-                  border: 'none',
-                  padding: '12px',
-                  cursor: itemsConsumoManual.length === 0 ? 'not-allowed' : 'pointer',
-                  opacity: itemsConsumoManual.length === 0 ? 0.5 : 1,
-                  textTransform: 'uppercase',
-                  fontSize: '12px',
-                  fontWeight: 600
-                }}
-              >
-                Confirmar Consumo
-              </button>
-            </div>
           </div>
-        </div>
-      )}
+        )}
+      </Modal>
 
       {/* MODAL DE COBRO Y FACTURACIÓN */}
-      {mostrarModalFacturacion && pedidoParaFacturar && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: 'rgba(0,0,0,0.8)',
-          backdropFilter: 'blur(4px)',
-          zIndex: 110,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: '20px'
-        }}>
-          <div style={{
-            background: '#161616',
-            border: '1px solid var(--accent-gold)',
-            width: '100%',
-            maxWidth: '540px',
-            maxHeight: '90vh',
-            overflowY: 'auto',
-            padding: '28px',
-            boxShadow: '0 10px 40px rgba(0,0,0,0.6)'
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '1px solid #222', paddingBottom: '14px' }}>
-              <div>
-                <h3 style={{ fontSize: '18px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                  Cobro & Facturación — Pedido #{pedidoParaFacturar.id}
-                </h3>
-                <p style={{ fontSize: '12px', color: '#a0a0a0', marginTop: '2px' }}>
-                  {pedidoParaFacturar.mesa_id ? `Mesa N° ${pedidoParaFacturar.mesa_id}` : 'Envío a Domicilio (Delivery)'} • Cliente: {pedidoParaFacturar.nombre_cliente}
-                </p>
+      <Modal
+        open={mostrarModalFacturacion && !!pedidoParaFacturar}
+        onClose={() => setMostrarModalFacturacion(false)}
+        variant="drawer"
+        title={pedidoParaFacturar ? `Cobro & Facturación — Pedido #${pedidoParaFacturar.id}` : ''}
+        subtitle={pedidoParaFacturar ? `${pedidoParaFacturar.mesa_id ? `Mesa N° ${pedidoParaFacturar.mesa_id}` : 'Envío a Domicilio (Delivery)'} • Cliente: ${pedidoParaFacturar.nombre_cliente}` : ''}
+        footer={
+          <Button type="submit" form="factura-form" variant="success" size="lg" fullWidth icon={procesandoFacturacion ? undefined : Receipt} loading={procesandoFacturacion}>
+            {procesandoFacturacion ? 'Generando Comprobante...' : 'Confirmar Cobro e Imprimir Ticket'}
+          </Button>
+        }
+      >
+        {pedidoParaFacturar && (
+          <form id="factura-form" onSubmit={handleConfirmarFacturacion} className="flex flex-col gap-5">
+            {/* 1. SELECCIÓN DE TIPO DE COMPROBANTE */}
+            <div>
+              <label className="block text-xs font-semibold uppercase text-gold mb-2">1. Tipo de Comprobante</label>
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { id: 'factura_b', label: 'Factura B', desc: 'Consumidor Final' },
+                  { id: 'factura_a', label: 'Factura A', desc: 'Resp. Inscripto' },
+                  { id: 'pre_cuenta', label: 'Pre-Cuenta', desc: 'Control Interno' }
+                ].map(type => (
+                  <button
+                    type="button"
+                    key={type.id}
+                    onClick={() => setFacturaTipoComprobante(type.id as any)}
+                    className={`min-h-[52px] rounded-md border px-2 py-2.5 text-center font-semibold ${
+                      facturaTipoComprobante === type.id
+                        ? 'bg-gold border-gold text-ink'
+                        : 'bg-cream border-line text-ink'
+                    }`}
+                  >
+                    <p className="text-xs">{type.label}</p>
+                    <p className="text-[10px] opacity-75">{type.desc}</p>
+                  </button>
+                ))}
               </div>
-              <button 
-                onClick={() => setMostrarModalFacturacion(false)}
-                style={{ background: 'transparent', border: 'none', color: '#a0a0a0', cursor: 'pointer' }}
-              >
-                <X size={22} />
-              </button>
             </div>
 
-            <form onSubmit={handleConfirmarFacturacion} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-              
-              {/* 1. SELECCIÓN DE TIPO DE COMPROBANTE */}
-              <div>
-                <label style={{ fontSize: '12px', color: 'var(--accent-gold)', fontWeight: 600, textTransform: 'uppercase', display: 'block', marginBottom: '8px' }}>
-                  1. Tipo de Comprobante
-                </label>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px' }}>
-                  {[
-                    { id: 'factura_b', label: 'Factura B', desc: 'Consumidor Final' },
-                    { id: 'factura_a', label: 'Factura A', desc: 'Resp. Inscripto' },
-                    { id: 'pre_cuenta', label: 'Pre-Cuenta', desc: 'Control Interno' }
-                  ].map(type => (
-                    <button
-                      type="button"
-                      key={type.id}
-                      onClick={() => setFacturaTipoComprobante(type.id as any)}
-                      style={{
-                        background: facturaTipoComprobante === type.id ? 'var(--accent-gold)' : '#222',
-                        color: facturaTipoComprobante === type.id ? '#121212' : '#ffffff',
-                        border: facturaTipoComprobante === type.id ? '1px solid var(--accent-gold)' : '1px solid #333',
-                        padding: '12px 8px',
-                        cursor: 'pointer',
-                        textAlign: 'center',
-                        fontWeight: 600
-                      }}
-                    >
-                      <p style={{ fontSize: '13px' }}>{type.label}</p>
-                      <p style={{ fontSize: '10px', opacity: 0.8 }}>{type.desc}</p>
-                    </button>
-                  ))}
+            {/* FORMULARIO FACTURA A (CUIT / RAZÓN SOCIAL) */}
+            {facturaTipoComprobante === 'factura_a' && (
+              <div className="rounded-md border border-line bg-cream p-4 flex flex-col gap-3">
+                <p className="text-xs font-semibold text-gold">Datos Fiscales del Cliente (Factura A)</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[11px] text-ink-soft mb-1">CUIT / CUIL *</label>
+                    <input
+                      type="text"
+                      required
+                      value={facturaClienteCuit}
+                      onChange={(e) => setFacturaClienteCuit(e.target.value)}
+                      placeholder="Ej: 30-71234567-8"
+                      className="w-full min-h-[44px] rounded-md border border-line bg-card px-3 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] text-ink-soft mb-1">Razón Social *</label>
+                    <input
+                      type="text"
+                      required
+                      value={facturaClienteRazonSocial}
+                      onChange={(e) => setFacturaClienteRazonSocial(e.target.value)}
+                      placeholder="Ej: Gastronomía del Sur S.A."
+                      className="w-full min-h-[44px] rounded-md border border-line bg-card px-3 text-sm"
+                    />
+                  </div>
                 </div>
               </div>
+            )}
 
-              {/* FORMULARIO FACTURA A (CUIT / RAZÓN SOCIAL) */}
-              {facturaTipoComprobante === 'factura_a' && (
-                <div style={{ background: '#222', padding: '16px', border: '1px solid #333', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                  <p style={{ fontSize: '12px', color: 'var(--accent-gold)', fontWeight: 600 }}>Datos Fiscales del Cliente (Factura A)</p>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                    <div>
-                      <label style={{ fontSize: '11px', color: '#aaa', display: 'block', marginBottom: '4px' }}>CUIT / CUIL *</label>
-                      <input
-                        type="text"
-                        required
-                        value={facturaClienteCuit}
-                        onChange={(e) => setFacturaClienteCuit(e.target.value)}
-                        placeholder="Ej: 30-71234567-8"
-                        style={{ width: '100%', padding: '10px', background: '#121212', border: '1px solid #444', color: 'white', fontSize: '13px' }}
-                      />
+            {/* 2. MEDIO DE PAGO */}
+            <div>
+              <label className="block text-xs font-semibold uppercase text-gold mb-2">2. Medio de Pago</label>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {[
+                  { id: 'efectivo', label: '💵 Efectivo' },
+                  { id: 'mercadopago', label: '📱 QR / MP' },
+                  { id: 'tarjeta', label: '💳 Tarjeta' },
+                  { id: 'mixto', label: '🔀 Mixto' }
+                ].map(pay => (
+                  <button
+                    type="button"
+                    key={pay.id}
+                    onClick={() => setFacturaMetodoPago(pay.id as any)}
+                    className={`min-h-[48px] rounded-md border px-1 text-xs font-semibold ${
+                      facturaMetodoPago === pay.id ? 'bg-success border-success text-white' : 'bg-cream border-line text-ink'
+                    }`}
+                  >
+                    {pay.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* CÁLCULO DE VUELTO EN EFECTIVO */}
+              {facturaMetodoPago === 'efectivo' && (
+                <div className="mt-3 rounded-md border border-line bg-cream p-4">
+                  <label className="block text-[11px] text-ink-soft mb-1.5">Monto abonado con billetes en efectivo:</label>
+                  <input
+                    type="number"
+                    value={facturaEfectivoAbonado}
+                    onChange={(e) => setFacturaEfectivoAbonado(e.target.value)}
+                    placeholder={`Monto total: $${Number(pedidoParaFacturar.total).toLocaleString('es-AR')}`}
+                    className="w-full min-h-[44px] rounded-md border border-line bg-card px-3 text-sm"
+                  />
+                  {Number(facturaEfectivoAbonado) > Number(pedidoParaFacturar.total) && (
+                    <div className="mt-2 text-success font-bold text-sm">
+                      Vuelto a entregar al cliente: ${(Number(facturaEfectivoAbonado) - Number(pedidoParaFacturar.total)).toLocaleString('es-AR')}
                     </div>
-                    <div>
-                      <label style={{ fontSize: '11px', color: '#aaa', display: 'block', marginBottom: '4px' }}>Razón Social *</label>
-                      <input
-                        type="text"
-                        required
-                        value={facturaClienteRazonSocial}
-                        onChange={(e) => setFacturaClienteRazonSocial(e.target.value)}
-                        placeholder="Ej: Gastronomía del Sur S.A."
-                        style={{ width: '100%', padding: '10px', background: '#121212', border: '1px solid #444', color: 'white', fontSize: '13px' }}
-                      />
-                    </div>
-                  </div>
+                  )}
                 </div>
               )}
-
-              {/* 2. MEDIO DE PAGO */}
-              <div>
-                <label style={{ fontSize: '12px', color: 'var(--accent-gold)', fontWeight: 600, textTransform: 'uppercase', display: 'block', marginBottom: '8px' }}>
-                  2. Medio de Pago
-                </label>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px' }}>
-                  {[
-                    { id: 'efectivo', label: '💵 Efectivo' },
-                    { id: 'mercadopago', label: '📱 QR / MP' },
-                    { id: 'tarjeta', label: '💳 Tarjeta' },
-                    { id: 'mixto', label: '🔀 Mixto' }
-                  ].map(pay => (
-                    <button
-                      type="button"
-                      key={pay.id}
-                      onClick={() => setFacturaMetodoPago(pay.id as any)}
-                      style={{
-                        background: facturaMetodoPago === pay.id ? '#2b9348' : '#222',
-                        color: 'white',
-                        border: facturaMetodoPago === pay.id ? '1px solid #2b9348' : '1px solid #333',
-                        padding: '10px 4px',
-                        cursor: 'pointer',
-                        fontSize: '12px',
-                        fontWeight: 600
-                      }}
-                    >
-                      {pay.label}
-                    </button>
-                  ))}
-                </div>
-
-                {/* CÁLCULO DE VUELTO EN EFECTIVO */}
-                {facturaMetodoPago === 'efectivo' && (
-                  <div style={{ marginTop: '12px', background: '#222', padding: '14px', border: '1px solid #333' }}>
-                    <label style={{ fontSize: '11px', color: '#aaa', display: 'block', marginBottom: '6px' }}>Monto abonado con billetes en efectivo:</label>
-                    <input
-                      type="number"
-                      value={facturaEfectivoAbonado}
-                      onChange={(e) => setFacturaEfectivoAbonado(e.target.value)}
-                      placeholder={`Monto total: $${Number(pedidoParaFacturar.total).toLocaleString('es-AR')}`}
-                      style={{ width: '100%', padding: '10px', background: '#121212', border: '1px solid #444', color: 'white', fontSize: '14px' }}
-                    />
-                    {Number(facturaEfectivoAbonado) > Number(pedidoParaFacturar.total) && (
-                      <div style={{ marginTop: '8px', color: '#2b9348', fontWeight: 700, fontSize: '14px' }}>
-                        Vuelto a entregar al cliente: ${ (Number(facturaEfectivoAbonado) - Number(pedidoParaFacturar.total)).toLocaleString('es-AR') }
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {/* DESCUENTO / PROPINA */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                <div>
-                  <label style={{ fontSize: '11px', color: '#aaa', display: 'block', marginBottom: '4px' }}>Descuento ($)</label>
-                  <input
-                    type="number"
-                    value={facturaDescuento}
-                    onChange={(e) => setFacturaDescuento(e.target.value)}
-                    placeholder="0"
-                    style={{ width: '100%', padding: '10px', background: '#222', border: '1px solid #333', color: 'white', fontSize: '13px' }}
-                  />
-                </div>
-                <div>
-                  <label style={{ fontSize: '11px', color: '#aaa', display: 'block', marginBottom: '4px' }}>Propina Sugerida ($)</label>
-                  <input
-                    type="number"
-                    value={facturaPropina}
-                    onChange={(e) => setFacturaPropina(e.target.value)}
-                    placeholder="0"
-                    style={{ width: '100%', padding: '10px', background: '#222', border: '1px solid #333', color: 'white', fontSize: '13px' }}
-                  />
-                </div>
-              </div>
-
-              {/* RESUMEN DE TOTAL Y BOTÓN DE CONFIRMACIÓN */}
-              <div style={{ borderTop: '1px solid #333', paddingTop: '16px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                  <span style={{ fontSize: '14px', color: '#aaa' }}>Total a Cobrar</span>
-                  <span style={{ fontSize: '24px', fontWeight: 700, color: 'var(--accent-gold)' }}>
-                    ${ (Number(pedidoParaFacturar.total) - Number(facturaDescuento || 0) + Number(facturaPropina || 0)).toLocaleString('es-AR') }
-                  </span>
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={procesandoFacturacion}
-                  style={{
-                    width: '100%',
-                    background: '#2b9348',
-                    color: 'white',
-                    border: 'none',
-                    padding: '16px',
-                    fontSize: '15px',
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '8px',
-                    textTransform: 'uppercase'
-                  }}
-                >
-                  {procesandoFacturacion ? (
-                    <>
-                      <Loader2 className="animate-spin" size={18} />
-                      <span>Generando Comprobante...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Receipt size={18} />
-                      <span>Confirmar Cobro e Imprimir Ticket 🧾</span>
-                    </>
-                  )}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* TICKET TÉRMICO IMPRIMIBLE FISCAL */}
-      {ticketFacturaImprimir && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: 'rgba(0,0,0,0.85)',
-          backdropFilter: 'blur(6px)',
-          zIndex: 120,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: '20px'
-        }}>
-          <div style={{
-            background: '#ffffff',
-            color: '#000000',
-            fontFamily: 'monospace',
-            width: '320px',
-            padding: '24px 18px',
-            boxShadow: '0 10px 40px rgba(0,0,0,0.8)',
-            fontSize: '12px',
-            lineHeight: 1.3
-          }}>
-            <div style={{ textAlign: 'center', marginBottom: '12px' }}>
-              <h2 style={{ fontSize: '16px', fontWeight: 800 }}>{BRAND_CONFIG.ticketHeader}</h2>
-              <p style={{ fontSize: '10px' }}>{BRAND_CONFIG.address}</p>
-              <p style={{ fontSize: '10px' }}>Tel: {BRAND_CONFIG.phone}</p>
-              <p style={{ fontSize: '10px', marginTop: '2px' }}>CUIT: 30-71829304-8 • Resp. Inscripto</p>
             </div>
 
-            <div style={{ borderTop: '1px dashed #000', borderBottom: '1px dashed #000', padding: '8px 0', margin: '8px 0' }}>
+            {/* DESCUENTO / PROPINA */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[11px] text-ink-soft mb-1">Descuento ($)</label>
+                <input
+                  type="number"
+                  value={facturaDescuento}
+                  onChange={(e) => setFacturaDescuento(e.target.value)}
+                  placeholder="0"
+                  className="w-full min-h-[44px] rounded-md border border-line bg-cream px-3 text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] text-ink-soft mb-1">Propina Sugerida ($)</label>
+                <input
+                  type="number"
+                  value={facturaPropina}
+                  onChange={(e) => setFacturaPropina(e.target.value)}
+                  placeholder="0"
+                  className="w-full min-h-[44px] rounded-md border border-line bg-cream px-3 text-sm"
+                />
+              </div>
+            </div>
+
+            {/* RESUMEN DE TOTAL */}
+            <div className="border-t border-line pt-4">
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-ink-soft">Total a Cobrar</span>
+                <span className="text-2xl font-bold text-gold">
+                  ${(Number(pedidoParaFacturar.total) - Number(facturaDescuento || 0) + Number(facturaPropina || 0)).toLocaleString('es-AR')}
+                </span>
+              </div>
+            </div>
+          </form>
+        )}
+      </Modal>
+
+      {/* TICKET TÉRMICO IMPRIMIBLE FISCAL */}
+      <Modal
+        open={!!ticketFacturaImprimir}
+        onClose={() => setTicketFacturaImprimir(null)}
+        title="Comprobante"
+        size="sm"
+        footer={
+          <div className="flex gap-2 no-print">
+            <Button variant="outline" fullWidth onClick={() => setTicketFacturaImprimir(null)}>Cerrar</Button>
+            <Button variant="primary" fullWidth icon={Printer} onClick={() => window.print()}>Imprimir</Button>
+          </div>
+        }
+      >
+        {ticketFacturaImprimir && (
+          <div className="ticket-printable-container rounded-md bg-white text-black font-mono text-xs leading-relaxed p-4">
+            <div className="text-center mb-3">
+              <h2 className="text-base font-extrabold">{BRAND_CONFIG.ticketHeader}</h2>
+              <p className="text-[10px]">{BRAND_CONFIG.address}</p>
+              <p className="text-[10px]">Tel: {BRAND_CONFIG.phone}</p>
+              <p className="text-[10px] mt-0.5">CUIT: 30-71829304-8 • Resp. Inscripto</p>
+            </div>
+
+            <div className="border-y border-dashed border-black py-2 my-2">
               <p><b>COMPROBANTE:</b> {ticketFacturaImprimir.tipo_comprobante === 'factura_a' ? 'FACTURA A' : ticketFacturaImprimir.tipo_comprobante === 'factura_b' ? 'FACTURA B' : 'PRE-CUENTA'}</p>
               <p><b>N°:</b> {ticketFacturaImprimir.nro_comprobante || `TC-0001-${String(ticketFacturaImprimir.id).padStart(8, '0')}`}</p>
               <p><b>FECHA:</b> {new Date(ticketFacturaImprimir.facturado_at || Date.now()).toLocaleString('es-AR')}</p>
@@ -3290,140 +2357,54 @@ export default function AdminDashboard() {
               <p><b>ORIGEN:</b> {ticketFacturaImprimir.mesa_id ? `Mesa ${ticketFacturaImprimir.mesa_id}` : 'Delivery'}</p>
             </div>
 
-            {/* DETALLE ITEMS */}
-            <div style={{ margin: '12px 0' }}>
+            <div className="my-3">
               {ticketFacturaImprimir.detalles?.map((det, i) => (
-                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                <div key={i} className="flex justify-between mb-1">
                   <span>{det.cantidad}x {det.producto?.nombre || 'Producto'}</span>
                   <span>${(det.cantidad * Number(det.precio_unitario)).toLocaleString('es-AR')}</span>
                 </div>
               ))}
             </div>
 
-            <div style={{ borderTop: '1px dashed #000', paddingTop: '8px', marginTop: '8px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <div className="border-t border-dashed border-black pt-2">
+              <div className="flex justify-between">
                 <span>Neto Gravado:</span>
                 <span>${Number(ticketFacturaImprimir.monto_neto || (Number(ticketFacturaImprimir.total) / 1.21)).toLocaleString('es-AR')}</span>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <div className="flex justify-between">
                 <span>IVA (21%):</span>
                 <span>${Number(ticketFacturaImprimir.monto_iva || (Number(ticketFacturaImprimir.total) - Number(ticketFacturaImprimir.total) / 1.21)).toLocaleString('es-AR')}</span>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '15px', fontWeight: 800, marginTop: '6px' }}>
+              <div className="flex justify-between text-sm font-extrabold mt-1.5">
                 <span>TOTAL:</span>
                 <span>${Number(ticketFacturaImprimir.total_facturado || ticketFacturaImprimir.total).toLocaleString('es-AR')}</span>
               </div>
-              <p style={{ marginTop: '6px' }}><b>MEDIO PAGO:</b> {ticketFacturaImprimir.metodo_pago || 'Efectivo'}</p>
+              <p className="mt-1.5"><b>MEDIO PAGO:</b> {ticketFacturaImprimir.metodo_pago || 'Efectivo'}</p>
             </div>
 
             {ticketFacturaImprimir.cae && (
-              <div style={{ borderTop: '1px dashed #000', paddingTop: '8px', marginTop: '8px', textAlign: 'center', fontSize: '10px' }}>
+              <div className="border-t border-dashed border-black pt-2 mt-2 text-center text-[10px]">
                 <p><b>CAE AFIP:</b> {ticketFacturaImprimir.cae}</p>
                 <p><b>VENCIMIENTO CAE:</b> {new Date(ticketFacturaImprimir.cae_vencimiento || Date.now()).toLocaleDateString('es-AR')}</p>
               </div>
             )}
 
-            <div style={{ textAlign: 'center', marginTop: '16px', fontSize: '10px' }}>
+            <div className="text-center mt-4 text-[10px]">
               <p>{BRAND_CONFIG.ticketFooter}</p>
             </div>
-
-            <div style={{ display: 'flex', gap: '8px', marginTop: '20px' }} className="no-print">
-              <button
-                onClick={() => window.print()}
-                style={{ flex: 1, background: '#000', color: '#fff', border: 'none', padding: '10px', fontWeight: 700, cursor: 'pointer' }}
-              >
-                🖨️ Imprimir
-              </button>
-              <button
-                onClick={() => setTicketFacturaImprimir(null)}
-                style={{ flex: 1, background: '#eee', color: '#000', border: '1px solid #ccc', padding: '10px', fontWeight: 700, cursor: 'pointer' }}
-              >
-                Cerrar
-              </button>
-            </div>
           </div>
-        </div>
-      )}
+        )}
+      </Modal>
 
-      {/* ESTILOS IMPRIMIBLES Y EXTRAS */}
+      {/* ESTILOS DE IMPRESIÓN (sólo afectan a @media print) */}
       <style jsx global>{`
-        @keyframes pulse {
-          0% {
-            box-shadow: 0 0 0 0 rgba(197, 168, 128, 0.4);
-          }
-          70% {
-            box-shadow: 0 0 0 10px rgba(197, 168, 128, 0);
-          }
-          100% {
-            box-shadow: 0 0 0 0 rgba(197, 168, 128, 0);
-          }
-        }
-
-        /* Responsive Admin Adjustments */
-        .admin-nav-scroll::-webkit-scrollbar {
-          display: none !important;
-        }
-
-        @media (max-width: 1024px) {
-          .admin-header {
-            flex-direction: column !important;
-            align-items: flex-start !important;
-            gap: 16px !important;
-            padding: 16px 20px !important;
-          }
-          .admin-header-controls {
-            width: 100% !important;
-            justify-content: flex-start !important;
-            flex-wrap: wrap !important;
-            gap: 8px !important;
-          }
-          .admin-dashboard-page main {
-            padding: 16px !important;
-          }
-        }
-
-        @media (max-width: 640px) {
-          .admin-header-controls {
-            display: grid !important;
-            grid-template-columns: 1fr 1fr !important;
-            gap: 8px !important;
-            width: 100% !important;
-          }
-          .admin-header-controls button {
-            width: 100% !important;
-            box-sizing: border-box !important;
-          }
-          /* Asegurar que el botón de cerrar sesión ocupe ancho completo */
-          .admin-header-controls button:last-child {
-            grid-column: span 2 !important;
-          }
-          .admin-header-controls > div {
-            padding: 8px !important;
-            justify-content: center !important;
-          }
-        }
-
-        /* Los formularios de producto y consumo manual tienen campos en
-           2 columnas (Precio/Categoria, Stock/Minimo) que quedan muy
-           angostos y dificiles de tocar en un celular. Se apilan en 1
-           sola columna por debajo de 480px. */
-        @media (max-width: 480px) {
-          .admin-form-2col {
-            grid-template-columns: 1fr !important;
-          }
-        }
-        
         @media print {
-          .no-print, header, nav, button, .no-print-overlay button {
+          .no-print, header, nav, button {
             display: none !important;
           }
           body {
             background: white !important;
             color: black !important;
-          }
-          .admin-dashboard-page {
-            background: white !important;
-            padding: 0 !important;
           }
           main {
             padding: 0 !important;
@@ -3438,17 +2419,6 @@ export default function AdminDashboard() {
             border: 1px solid #ccc !important;
             box-shadow: none !important;
             page-break-inside: avoid !important;
-            border-radius: 0px !important;
-          }
-          .no-print-overlay {
-            position: absolute !important;
-            background: none !important;
-            padding: 0 !important;
-            top: 0 !important;
-            left: 0 !important;
-            right: 0 !important;
-            bottom: 0 !important;
-            display: block !important;
           }
           .ticket-printable-container {
             box-shadow: none !important;
@@ -3457,7 +2427,6 @@ export default function AdminDashboard() {
             width: 100% !important;
             max-width: 100% !important;
             margin: 0 !important;
-            border-radius: 0px !important;
           }
         }
       `}</style>
