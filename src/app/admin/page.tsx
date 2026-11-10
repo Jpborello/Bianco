@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { supabase } from '../../lib/supabase';
+import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import { BRAND_CONFIG } from '../../lib/brandConfig';
 import {
   getMesas,
@@ -13,6 +13,8 @@ import {
   DbTable,
   DbOrder,
   DbRequest,
+  getProductos,
+  getCategorias,
   crearProducto,
   actualizarProducto,
   eliminarProducto,
@@ -151,6 +153,16 @@ export default function AdminDashboard() {
 
   // Cargar todos los datos
   const cargarDatosCompletos = async () => {
+    if (!isSupabaseConfigured) {
+      const dataMesas = await getMesas();
+      setMesas(dataMesas);
+      setProductosList(await getProductos());
+      setCategoriasList(await getCategorias());
+      setPedidos([]);
+      setSolicitudes([]);
+      setCargando(false);
+      return;
+    }
     try {
       const dataMesas = await getMesas();
       setMesas(dataMesas);
@@ -246,6 +258,8 @@ export default function AdminDashboard() {
   useEffect(() => {
     if (rolActivo) {
       cargarDatosCompletos();
+
+      if (!isSupabaseConfigured) return;
 
       const channelPedidos = supabase
         .channel('admin-pedidos')

@@ -5,7 +5,7 @@ import { useParams } from 'next/navigation';
 import Image from 'next/image';
 import { Producto, PRODUCTOS_MOCK, CATEGORIAS } from '../../../lib/mockData';
 import { getProductos, getCategorias, getMesas, crearPedido, crearSolicitud, ocuparMesa, DbTable, DbOrder } from '../../../lib/dbActions';
-import { supabase } from '../../../lib/supabase';
+import { supabase, isSupabaseConfigured } from '../../../lib/supabase';
 import { BRAND_CONFIG } from '../../../lib/brandConfig';
 import {
   ShoppingBag,
@@ -111,7 +111,7 @@ export default function MesaClientePage() {
             nombre: p.nombre,
             descripcion: p.descripcion || '',
             precio: Number(p.precio),
-            imagenUrl: p.imagen_url || 'https://images.unsplash.com/photo-1578985545062-69928b1d9587?w=600&auto=format&fit=crop&q=80',
+            imagenUrl: p.imagen_url || '/productos/ceviche-clasico.jpg',
             categoria: p.categoria?.nombre || 'General',
             esCafe: p.es_cafe,
             stock: p.stock,
@@ -168,6 +168,7 @@ export default function MesaClientePage() {
 
   // Efecto para escuchar pedidos de esta mesa por Supabase Realtime y cargarlos
   useEffect(() => {
+    if (!isSupabaseConfigured) return;
     if (mesaDb?.id) {
       cargarPedidosSesion(mesaDb.id, mesaDb.ocupada_desde);
 
@@ -204,6 +205,7 @@ export default function MesaClientePage() {
 
   // Efecto para escuchar cambios en la mesa por Supabase Realtime (liberación de mesa)
   useEffect(() => {
+    if (!isSupabaseConfigured) return;
     if (mesaDb?.id) {
       const channelMesa = supabase
         .channel(`mesa-${mesaDb.id}-status-realtime`)
@@ -242,6 +244,7 @@ export default function MesaClientePage() {
 
   // Efecto para escuchar cambios en los productos por Supabase Realtime (cambios de stock en vivo)
   useEffect(() => {
+    if (!isSupabaseConfigured) return;
     const channelProds = supabase
       .channel('mesa-realtime-productos')
       .on('postgres_changes', {
@@ -260,7 +263,7 @@ export default function MesaClientePage() {
                   nombre: p.nombre,
                   descripcion: p.descripcion || '',
                   precio: Number(p.precio),
-                  imagenUrl: p.imagen_url || 'https://images.unsplash.com/photo-1578985545062-69928b1d9587?w=600&auto=format&fit=crop&q=80',
+                  imagenUrl: p.imagen_url || '/productos/ceviche-clasico.jpg',
                   categoria: p.categoria?.nombre || 'General',
                   esCafe: p.es_cafe,
                   stock: p.stock,

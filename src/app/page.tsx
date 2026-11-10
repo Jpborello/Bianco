@@ -5,7 +5,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { CATEGORIAS, PRODUCTOS_MOCK, Producto } from '../lib/mockData';
 import { getProductos, getCategorias, crearPedido } from '../lib/dbActions';
-import { supabase } from '../lib/supabase';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import {
   ShoppingBag,
   ArrowRight,
@@ -62,7 +62,7 @@ export default function Home() {
             nombre: p.nombre,
             descripcion: p.descripcion || '',
             precio: Number(p.precio),
-            imagenUrl: p.imagen_url || 'https://images.unsplash.com/photo-1578985545062-69928b1d9587?w=600&auto=format&fit=crop&q=80',
+            imagenUrl: p.imagen_url || '/productos/ceviche-clasico.jpg',
             categoria: p.categoria?.nombre || 'General',
             esCafe: p.es_cafe,
             stock: p.stock,
@@ -88,6 +88,8 @@ export default function Home() {
     }
 
     cargarDatos();
+
+    if (!isSupabaseConfigured) return;
 
     // Escuchar actualizaciones de productos (cambios de stock en tiempo real)
     const channelProds = supabase

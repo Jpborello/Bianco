@@ -1,10 +1,17 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+export const isSupabaseConfigured = Boolean(
+  process.env.NEXT_PUBLIC_SUPABASE_URL &&
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY &&
+  !process.env.NEXT_PUBLIC_SUPABASE_URL.includes('placeholder')
+);
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  console.warn('Supabase credentials are missing from environment variables.');
-}
+const supabaseUrl = isSupabaseConfigured
+  ? process.env.NEXT_PUBLIC_SUPABASE_URL!
+  : 'https://placeholder-project.supabase.co';
+
+const supabaseAnonKey = isSupabaseConfigured
+  ? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  : 'placeholder-anon-key';
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);

@@ -1,4 +1,4 @@
-import { supabase } from './supabase';
+import { supabase, isSupabaseConfigured } from './supabase';
 import { PRODUCTOS_MOCK, CATEGORIAS, Producto } from './mockData';
 
 // Interfaz para estructura de base de datos
@@ -86,6 +86,9 @@ export interface DbRequest {
 
 // 1. Obtener Categorías
 export async function getCategorias(): Promise<DbCategory[]> {
+  if (!isSupabaseConfigured) {
+    return CATEGORIAS.map((c, idx) => ({ id: idx + 1, nombre: c, slug: c.toLowerCase().replace(/\s+/g, '-') }));
+  }
   try {
     const { data, error } = await supabase
       .from('categorias')
@@ -95,13 +98,28 @@ export async function getCategorias(): Promise<DbCategory[]> {
     if (error) throw error;
     return data || [];
   } catch (err) {
-    console.error('Error fetching categories from DB:', err);
-    return [];
+    console.warn('DB no disponible para categorias, usando mocks locales.');
+    return CATEGORIAS.map((c, idx) => ({ id: idx + 1, nombre: c, slug: c.toLowerCase().replace(/\s+/g, '-') }));
   }
 }
 
 // 2. Obtener Productos
 export async function getProductos(): Promise<DbProduct[]> {
+  if (!isSupabaseConfigured) {
+    return PRODUCTOS_MOCK.map((p) => ({
+      id: p.id,
+      categoria_id: null,
+      nombre: p.nombre,
+      descripcion: p.descripcion,
+      precio: p.precio,
+      imagen_url: p.imagenUrl,
+      disponible: true,
+      es_cafe: Boolean(p.esCafe),
+      stock: p.stock ?? null,
+      stock_minimo: p.stockMinimo ?? null,
+      categoria: { nombre: p.categoria }
+    }));
+  }
   try {
     const { data, error } = await supabase
       .from('productos')
@@ -112,13 +130,35 @@ export async function getProductos(): Promise<DbProduct[]> {
     if (error) throw error;
     return data || [];
   } catch (err) {
-    console.error('Error fetching products from DB, using mock fallback:', err);
-    return [];
+    console.warn('DB no disponible para productos, usando mocks locales.');
+    return PRODUCTOS_MOCK.map((p) => ({
+      id: p.id,
+      categoria_id: null,
+      nombre: p.nombre,
+      descripcion: p.descripcion,
+      precio: p.precio,
+      imagen_url: p.imagenUrl,
+      disponible: true,
+      es_cafe: Boolean(p.esCafe),
+      stock: p.stock ?? null,
+      stock_minimo: p.stockMinimo ?? null,
+      categoria: { nombre: p.categoria }
+    }));
   }
 }
 
 // 3. Obtener Mesas
 export async function getMesas(): Promise<DbTable[]> {
+  if (!isSupabaseConfigured) {
+    return Array.from({ length: 10 }, (_, i) => ({
+      id: i + 1,
+      numero: i + 1,
+      estado: 'libre',
+      cliente_nombre: null,
+      cliente_telefono: null,
+      ocupada_desde: null
+    }));
+  }
   try {
     const { data, error } = await supabase
       .from('mesas')
@@ -128,8 +168,15 @@ export async function getMesas(): Promise<DbTable[]> {
     if (error) throw error;
     return data || [];
   } catch (err) {
-    console.error('Error fetching tables:', err);
-    return [];
+    console.warn('DB no disponible para mesas, usando mocks locales.');
+    return Array.from({ length: 10 }, (_, i) => ({
+      id: i + 1,
+      numero: i + 1,
+      estado: 'libre',
+      cliente_nombre: null,
+      cliente_telefono: null,
+      ocupada_desde: null
+    }));
   }
 }
 
@@ -143,6 +190,20 @@ export async function crearPedido(orderData: {
   total: number;
   items: { productoId: number; cantidad: number; precioUnitario: number; observaciones?: string }[];
 }): Promise<{ data: any; error: any }> {
+  if (!isSupabaseConfigured) {
+    const mockPedido = {
+      id: Date.now(),
+      tipo: orderData.tipo,
+      mesa_id: orderData.mesa_id || null,
+      nombre_cliente: orderData.nombre_cliente,
+      telefono: orderData.telefono,
+      direccion: orderData.direccion || null,
+      total: orderData.total,
+      estado: 'pendiente',
+      created_at: new Date().toISOString()
+    };
+    return { data: mockPedido, error: null };
+  }
   try {
     // 1. Insertar pedido principal
     const { data: pedido, error: pedidoError } = await supabase
@@ -213,6 +274,9 @@ export async function crearPedido(orderData: {
 
 // 5. Crear Solicitud (Llamar Mozo o Pedir Cuenta)
 export async function crearSolicitud(mesaId: number, tipo: 'llamar_mozo' | 'pedir_cuenta'): Promise<{ data: any; error: any }> {
+  if (!isSupabaseConfigured) {
+    return { data: { id: Date.now(), mesa_id: mesaId, tipo, estado: 'pendiente' }, error: null };
+  }
   try {
     // Insertar solicitud
     const { data, error } = await supabase
